@@ -221,7 +221,41 @@ async function restoreLoginSession(){
 }
 
 
-async function loadChariots(){const {data,error}=await supabaseClient.from('chariots').select('*').order('id',{ascending:false});if(error)throw error;CHARIOTS=data||[];return CHARIOTS}
+const CHARIOT_SELECT_FIELDS='id,qr_id,chassis,serial_number,engine_number,engine,stock,color,capacity,lifting_height,fork_dimension,mast_type,tire_type,status,client,delivery_date,observations,created_at,updated_at';
+async function loadChariots(){
+  const attempts=[
+    ()=>supabaseClient.from('chariots').select(CHARIOT_SELECT_FIELDS).order('created_at',{ascending:false}).limit(5000),
+    ()=>supabaseClient.from('chariots').select(CHARIOT_SELECT_FIELDS).limit(5000),
+    ()=>supabaseClient.from('chariots').select('*').limit(5000)
+  ];
+  let lastError=null;
+  for(const makeQuery of attempts){
+    try{
+      const {data,error}=await withTimeout(makeQuery(),12000);
+      if(!error){
+        CHARIOTS=Array.isArray(data)?data:[];
+        CHARIOTS.sort((a,b)=>{
+          const da=new Date(a.created_at||a.updated_at||0).getTime(),db=new Date(b.created_at||b.updated_at||0).getTime();
+          if(db!==da)return db-da;
+          return Number(b.id||0)-Number(a.id||0);
+        });
+        try{localStorage.setItem('sbi_chariots_cache_v1',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
+        return CHARIOTS;
+      }
+      lastError=error;
+    }catch(e){lastError=e}
+  }
+  try{
+    const cached=JSON.parse(localStorage.getItem('sbi_chariots_cache_v1')||'null');
+    if(Array.isArray(cached?.rows)&&cached.rows.length){
+      CHARIOTS=cached.rows;
+      console.warn('Supabase chariots indisponible, utilisation des données en cache.',lastError);
+      return CHARIOTS;
+    }
+  }catch(_){ }
+  CHARIOTS=[];
+  throw lastError||new Error('Impossible de charger les chariots.');
+}
 
 function getUserDisplayName(){return currentUser?.user_metadata?.full_name||currentUser?.user_metadata?.name||currentUser?.email?.split('@')[0]||'Utilisateur'}
 function getUserRoleLabel(){return isAdmin()?'Administrateur':'Utilisateur'}
@@ -347,14 +381,22 @@ function isStock(c){return normalizeStatus(c.status)==='en stock'&&!String(c.cli
 function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;return `<div class="item" onclick="location.href='chariot.html?id=${encodeURIComponent(id)}'"><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
 async function dashboardPage(){
   if(!await session())return;
-  await loadChariots();
+  let dataLoadError=null;
+  try{await loadChariots()}catch(e){dataLoadError=e;console.error('Chargement des chariots du dashboard impossible',e)}
   try{await loadDeliveryPlans({migrateLocal:true})}catch(e){console.warn('Planning dashboard',e)}
   renderConnectedUser();
   $('#dashDate').textContent=new Date().toLocaleString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  $('#total').textContent=CHARIOTS.length;
-  $('#stock').textContent=CHARIOTS.filter(isStock).length;
-  $('#delivered').textContent=CHARIOTS.filter(isDelivered).length;
+  $('#total').textContent=dataLoadError?'—':CHARIOTS.length;
+  $('#stock').textContent=dataLoadError?'—':CHARIOTS.filter(isStock).length;
+  $('#delivered').textContent=dataLoadError?'—':CHARIOTS.filter(isDelivered).length;
   renderDashboardLatest();
+  if(dataLoadError){
+    const msg='Impossible de charger les données Supabase. Vérifiez la connexion puis actualisez la page.';
+    if($('#latestRows'))$('#latestRows').innerHTML=`<tr><td colspan=5 class=\"dash-empty\">${esc(msg)}</td></tr>`;
+    if($('#activityList'))$('#activityList').innerHTML=`<div class=\"dash-empty\">${esc(msg)}</div>`;
+    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML=`<div class=\"dash-empty\">${esc(msg)}</div>`;
+    return;
+  }
   await loadDashboardNotifications();
   renderProfessionalDashboard();
 }
