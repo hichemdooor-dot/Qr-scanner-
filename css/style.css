@@ -1025,3 +1025,81 @@ body.dashboard-page.sidebar-collapsed .professional-dashboard .pro-site-footer{m
     padding:11px 12px!important;
   }
 }
+
+
+/* V63.2 — MOBILE HAMBURGER: use the exact Dashboard drawer on ALL pages */
+@media (max-width:800px), (hover:none) and (pointer:coarse){
+  body.menu-open{overflow:hidden!important;touch-action:none!important}
+  .overlay.open{
+    display:block!important;position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;
+    background:rgba(4,18,31,.58)!important;z-index:99990!important;visibility:visible!important;opacity:1!important;
+  }
+  .overlay:not(.open){display:none!important}
+  .overlay.open > .side.dashboard-mobile-drawer{
+    display:flex!important;flex-direction:column!important;position:absolute!important;left:0!important;top:0!important;bottom:0!important;
+    width:min(88vw,330px)!important;height:100dvh!important;max-height:none!important;margin:0!important;padding:0 10px 14px!important;
+    box-sizing:border-box!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;
+    background:#081d2d!important;color:#fff!important;border:0!important;border-right:1px solid rgba(255,255,255,.10)!important;
+    box-shadow:10px 0 30px rgba(0,0,0,.35)!important;z-index:99991!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-logo{
+    display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 96px!important;height:96px!important;
+    padding:10px 35px 10px 10px!important;box-sizing:border-box!important;background:#081d2d!important;
+    border-bottom:1px solid rgba(255,255,255,.18)!important;position:sticky!important;top:0!important;z-index:5!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-logo img{
+    display:block!important;width:195px!important;height:78px!important;max-width:100%!important;object-fit:contain!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu,
+  .overlay.open > .side.dashboard-mobile-drawer .nav{
+    display:block!important;width:100%!important;margin:0!important;padding:14px 8px 24px!important;box-sizing:border-box!important;
+    background:#081d2d!important;color:#fff!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a{
+    display:flex!important;align-items:center!important;width:100%!important;min-height:53px!important;box-sizing:border-box!important;
+    margin:4px 0!important;padding:11px 12px!important;gap:14px!important;border-radius:10px!important;
+    background:transparent!important;color:#eaf3fa!important;font-family:inherit!important;font-size:16px!important;
+    font-weight:700!important;line-height:1.2!important;letter-spacing:0!important;text-decoration:none!important;
+    white-space:normal!important;word-break:normal!important;opacity:1!important;visibility:visible!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a span,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a span{
+    display:block!important;visibility:visible!important;opacity:1!important;color:inherit!important;flex:1 1 auto!important;min-width:0!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a.active,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a.active{
+    background:#087bf0!important;color:#fff!important;box-shadow:0 7px 18px rgba(8,123,240,.25)!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu .nav-svg,
+  .overlay.open > .side.dashboard-mobile-drawer .nav .nav-svg{
+    display:block!important;width:24px!important;height:24px!important;min-width:24px!important;flex:0 0 24px!important;
+    color:currentColor!important;stroke:currentColor!important;opacity:1!important;visibility:visible!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu .nav-separator,
+  .overlay.open > .side.dashboard-mobile-drawer .nav .nav-separator{
+    display:block!important;width:100%!important;height:1px!important;margin:12px 0!important;background:rgba(255,255,255,.18)!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-promo{
+    display:block!important;flex:0 0 auto!important;width:100%!important;height:300px!important;margin:8px 0 10px!important;
+    border-radius:12px!important;overflow:hidden!important;background:#0b2235!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-promo img{
+    display:block!important;width:100%!important;height:300px!important;object-fit:cover!important;object-position:center!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-foot{
+    display:block!important;flex:0 0 auto!important;color:#8ca1b2!important;text-align:left!important;padding:0 8px!important;
+    font-size:9px!important;line-height:1.5!important;visibility:visible!important;opacity:1!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-foot span{color:#60788c!important}
+  .overlay.open > .side.dashboard-mobile-drawer .mobile-drawer-close{
+    display:grid!important;place-items:center!important;position:absolute!important;right:9px!important;top:10px!important;
+    width:36px!important;height:36px!important;padding:0!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:9px!important;
+    background:rgba(255,255,255,.08)!important;color:#fff!important;font-size:25px!important;line-height:1!important;z-index:20!important;
+  }
+}
+@media(max-width:430px){
+  .overlay.open > .side.dashboard-mobile-drawer{width:88vw!important;max-width:330px!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a{min-height:53px!important;font-size:16px!important}
+}
