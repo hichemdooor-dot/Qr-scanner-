@@ -1,0 +1,17 @@
+SBI HANGCHA — Professional UI V60
+
+Base: derniere version utilisateur PLANNING-ONLY-CHARIOT-OBLIGATOIRE(2)
+
+Modifications interface:
+- Nouveau dashboard professionnel inspire du preview valide.
+- Sidebar sombre SBI / HANGCHA avec icones SVG.
+- Recherche globale visuelle dans l'en-tete du dashboard.
+- Cartes KPI modernisees: stock, livres, maintenance, livraisons prevues.
+- Banniere HANGCHA / SBI conservee depuis le preview.
+- Visuel lateral Algerie conserve depuis le preview.
+- Repartition par moteur + capacite ajoutees au dashboard.
+- Section prochaines livraisons + alertes / maintenance.
+- Actions rapides: nouveau chariot, QR, Excel, PDF.
+- Adaptation mobile conservee et renforcee.
+- Navigation, logique Supabase, licence et fonctions metier conservees.
+- Regles existantes de gestion des chariots conservees.

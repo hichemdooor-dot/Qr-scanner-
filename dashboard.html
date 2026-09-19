@@ -1,0 +1,56 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="css/style.css?v=61.6"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><title>SBI — Tableau de bord</title></head><body class="dashboard-page professional-dashboard">
+<div id="licenseGate" class="license-gate"><div class="license-inner"><img src="assets/logo-sbi-hangcha.png"><div class="license-loader"></div><h2>Vérification de la licence...</h2><div id="licenseInfo" class="license-info">Vérification en cours...</div></div></div>
+<div class="dashboard-shell">
+  <aside class="dash-sidebar">
+    <div class="dash-logo"><img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"></div>
+    <nav class="dash-nav" data-nav></nav>
+    <div class="sidebar-promo"><img src="assets/sidebar-promo-preview.png" alt="Hangcha en Algérie"></div>
+    <div class="sidebar-foot">© 2026 SBI · Hangcha<br><span>Version 4.3</span></div>
+  </aside>
+  <main class="dash-main">
+    <header class="dash-header pro-header">
+      <button class="menu-btn pro-menu-btn" onclick="window.innerWidth<=800?toggleMenu():toggleSidebar()" aria-label="Ouvrir le menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="search-shell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="M16.5 16.5L21 21"></path></svg><input id="dashboardSearch" placeholder="Rechercher un chariot (N° châssis, moteur, client...)" onkeydown="if(event.key==='Enter'&&this.value.trim())location.href='chariots.html?search='+encodeURIComponent(this.value.trim())"></div>
+      <div class="header-actions">
+        <button class="notification-bell" onclick="document.getElementById('notifications')?.scrollIntoView({behavior:'smooth'})" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg><span id="notificationCount" class="notification-count">0</span></button>
+        <div class="user-menu-wrap"><button id="userMenuButton" class="user-menu-button" type="button" onclick="toggleUserMenu()"><span class="user-circle" id="userTopAvatar">U</span><span class="user-menu-name"><b id="userTopName">Utilisateur</b><small id="userTopRole">Utilisateur</small></span><span class="user-menu-chevron">⌄</span></button><div id="userMenu" class="user-menu hidden"><a href="profile.html">👤 <span>Profil</span></a><a href="gestion.html" id="userMenuAdmin" class="hidden">⚙ <span>Gestion utilisateurs</span></a><button type="button" onclick="logout()">↪ <span>Déconnexion</span></button></div></div>
+      </div>
+    </header>
+
+    <section class="dashboard-welcome"><div><div class="eyebrow">GESTION DU PARC · ALGÉRIE</div><h1>Bienvenue, <span id="welcomeUser">Utilisateur</span></h1><p>Pilotage quotidien des chariots élévateurs, du stock à la livraison.</p></div><div class="dash-date-pro" id="dashDate"></div></section>
+
+    <section class="hero-banner"><img src="assets/dashboard-hero-preview.png" alt="Solutions de manutention Hangcha SBI Algérie"><div class="hero-overlay"></div></section>
+
+    <section class="stats-grid pro-stats">
+      <article class="dash-stat stat-blue"><span class="stat-icon pro-icon blue kpi-target-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 23h22"/><path d="M8 23v-9h7v9M15 14h7l3 4v5"/><path d="M8 10h7v4H8z"/><path d="M11 7v3M15 7v3"/><circle cx="10" cy="25.5" r="2.5"/><circle cx="23" cy="25.5" r="2.5"/></svg></span><div><b id="stock">0</b><span>Chariots en stock</span><small class="kpi-trend">Disponibles maintenant</small></div></article>
+      <article class="dash-stat stat-green"><span class="stat-icon pro-icon green kpi-target-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h15v12H4z"/><path d="M19 14h4l4 4v4h-8z"/><circle cx="9" cy="24.5" r="2.5"/><circle cx="24" cy="24.5" r="2.5"/><path d="M7 14h6M7 17h6M7 20h4"/></svg></span><div><b id="delivered">0</b><span>Chariots livrés</span><small class="kpi-trend">Cycle terminé</small></div></article>
+      <article class="dash-stat stat-dark"><span class="stat-icon pro-icon dark kpi-target-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="7" width="22" height="20" rx="3"/><path d="M9 5v5M23 5v5M5 13h22"/><path d="M10 18h.01M16 18h.01M22 18h.01M10 22h.01M16 22h.01M22 22h.01"/></svg></span><div><b id="plannedKpi">0</b><span>Livraisons prévues</span><small class="kpi-trend">Planning partagé</small></div></article>
+    </section>
+
+    <section class="dashboard-grid-main">
+      <div class="dash-panel pro-panel latest-panel"><div class="section-heading"><h2>Derniers chariots ajoutés</h2><a class="text-link" href="chariots.html">Voir tous →</a></div><div class="table-scroll"><table class="dash-table modern-table"><thead><tr><th>N° Châssis</th><th>Moteur</th><th>Capacité</th><th>Statut</th><th>Date</th></tr></thead><tbody id="latestRows"></tbody></table></div></div>
+      <div class="dash-panel pro-panel activity-panel">
+        <div class="section-heading"><h2>Activité récente</h2><a class="text-link" href="historique.html">Voir tout →</a></div>
+        <div id="activityList" class="activity-list"><div class="dash-empty">Chargement...</div></div>
+      </div>
+    </section>
+
+    <section class="dashboard-grid-bottom single-column">
+      <div class="dash-panel pro-panel delivery-preview full-width-panel">
+        <div class="section-heading"><h2>Prochaines livraisons</h2><a class="text-link" href="planning-livraisons.html">Voir planning →</a></div>
+        <div id="upcomingDeliveries" class="upcoming-table"><div class="dash-empty">Chargement...</div></div>
+      </div>
+    </section>
+
+    <section class="quick-actions">
+<a href="nouveau-chariot.html" class="quick primary"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><span>Nouveau chariot</span><b>→</b></a>
+<a href="qr-codes.html" class="quick dark"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h3v3h-3zM18 18h2M14 20h2"/></svg></span><span>Scanner QR Code</span><b>→</b></a>
+<a href="export.html" class="quick green" onclick="event.preventDefault();exportChariotsExcel()"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4M15 15l3 3M18 15l-3 3"/></svg></span><span>Exporter Excel</span><b>→</b></a>
+<a href="export.html" class="quick red" onclick="event.preventDefault();exportChariotsPDF()"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M8 13h8M8 16h6"/></svg></span><span>Exporter PDF</span><b>→</b></a>
+<a href="qr-codes.html" class="quick dark"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8V5h12v3M5 18h14M7 12h10v6H7z"/><path d="M8 16h8"/></svg></span><span>Imprimer QR Code</span><b>→</b></a>
+</section>
+  </main>
+</div>
+<div class="overlay"><aside class="side" data-nav></aside></div>
+<footer class="pro-site-footer"><div class="footer-brand"><strong>HANGCHA</strong><i>|</i><strong>SBI</strong><span>Lifting Your Business</span></div><div class="footer-links"><span>Chariots élévateurs</span><i>|</i><span>Pièces</span><i>|</i><span>Service après-vente</span><i>|</i><span>Partout en Algérie</span></div><div class="footer-country">🇩🇿</div></footer>
+<script src="js/shell.js?v=30"></script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script><script src="maintenance-config.js?v=6"></script><script src="js/app.js?v=61"></script><script>initPage(dashboardPage())</script></body></html>

@@ -1,0 +1,4 @@
+SBI Dashboard V61.1 — final preview match
+- Dark navy header exactly aligned with supplied preview.
+- SVG hamburger icon replaces unicode menu glyph.
+- Sidebar, hero, KPI cards, panels, quick actions and footer remain preview-matched.

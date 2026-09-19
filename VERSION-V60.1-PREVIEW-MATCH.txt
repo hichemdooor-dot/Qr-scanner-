@@ -1,0 +1,6 @@
+SBI Dashboard V60.1 — Preview-match redesign
+- Dashboard visually matched to the supplied preview layout.
+- Sidebar logo is derived from the preview.
+- Quick actions use inline SVG icons.
+- Lower-right alerts use the compact preview table style.
+- Desktop/mobile spacing and footer updated.

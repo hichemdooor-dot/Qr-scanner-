@@ -1,0 +1,5 @@
+SBI Fleet Management — V61.4
+FIX: Préparation livraison
+- Après le passage d'un chariot en « Préparation livraison », la page est actualisée automatiquement.
+- Le chariot n'est plus affiché dans la liste « Préparation livraison » après le refresh.
+- La liste est reconstruite depuis Supabase au rechargement, ce qui évite les anciennes données locales.
