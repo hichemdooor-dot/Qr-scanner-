@@ -1,0 +1,3 @@
+SBI V63.0 — Prochaines livraisons dashboard
+
+La section Prochaines livraisons lit directement le Planning des livraisons (événements maintenance), affiche uniquement les 5 dates les plus proches à partir d'aujourd'hui, exclut les annulations et ne reste jamais bloquée sur Chargement.

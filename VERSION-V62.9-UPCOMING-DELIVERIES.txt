@@ -1,0 +1,1 @@
+V62.9 — Prochaines livraisons : uniquement le planning partagé, aujourd’hui et dates futures, trié par proximité. Aucun autre changement fonctionnel.

@@ -390,6 +390,7 @@ async function loadDeliveryPlans({migrateLocal=false}={}){
 }
 function formatPlannedDate(iso){if(!iso)return '—';try{return parseLocalDate(iso).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})}catch(e){return iso}}
 function parseLocalDate(iso){const [y,m,d]=String(iso).split('-').map(Number);return new Date(y||2000,(m||1)-1,d||1)}
+function localISODateGlobal(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 function isStock(c){return normalizeStatus(c.status)==='en stock'&&!String(c.client||'').trim()}
 function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;return `<div class="item" onclick="location.href='chariot.html?id=${encodeURIComponent(id)}'"><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
 async function dashboardPage(){
@@ -421,23 +422,23 @@ async function dashboardPage(){
     return;
   }
 
-  // Load the secondary dashboard sections independently. Their failures must
-  // never reset or hide the chariot data already rendered above.
-  let plans=[];
+  // Load the dashboard delivery preview directly from the shared Planning
+  // source; do not wait for the full planning-page loader or local migration.
   try{
-    await withTimeout(loadDeliveryPlans({migrateLocal:true}),8000);
-    plans=readCachedDeliveryPlans();
+    // Dashboard deliveries are loaded independently from the shared planning.
+    // This avoids leaving the section stuck on "Chargement..." when another
+    // dashboard query is slow or fails.
+    await renderUpcomingDeliveriesFromPlanning();
   }catch(e){
-    console.warn('Planning dashboard',e);
-    plans=readCachedDeliveryPlans();
+    console.warn('Prochaines livraisons dashboard',e);
+    if($('#plannedKpi'))$('#plannedKpi').textContent='—';
+    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML='<div class="dash-empty">Impossible de charger les livraisons prévues.</div>';
   }
-  if($('#plannedKpi'))$('#plannedKpi').textContent=plans.filter(p=>p&&p.date).length;
 
   try{await loadDashboardNotifications()}catch(e){
     console.warn('Activité dashboard',e);
     if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Aucune activité récente.</div>';
   }
-  renderProfessionalDashboard();
 }
 function renderDashboardLatest(){
   const rows=[...CHARIOTS].sort((a,b)=>new Date(b.created_at||b.updated_at||0)-new Date(a.created_at||a.updated_at||0)).slice(0,5);
@@ -698,19 +699,75 @@ async function deliveryPlanningPage(){
   renderWeek();renderList();
 }
 
-function renderProfessionalDashboard(){
-  const plans=readCachedDeliveryPlans().filter(p=>p&&p.date).sort((a,b)=>String(a.date+' '+(a.time||'')).localeCompare(String(b.date+' '+(b.time||'')))).slice(0,5);
-  const planned=document.getElementById('plannedKpi'); if(planned)planned.textContent=plans.length;
-  const upcoming=document.getElementById('upcomingDeliveries');
-  if(upcoming){
-    upcoming.innerHTML=plans.length?`<table><thead><tr><th>Date</th><th>Client</th><th>Destination</th><th>Chariot</th><th>Chauffeur</th></tr></thead><tbody>${plans.map(p=>{const c=CHARIOTS.find(x=>String(x.qr_id)===String(p.qr));return `<tr><td><span class="upcoming-badge">${esc(new Date(String(p.date)+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}))}${p.time?' · '+esc(p.time):''}</span></td><td>${esc(c?.client||'Sans client')}</td><td>${esc(p.destination||'—')}</td><td>${esc(c?.chassis||c?.qr_id||p.qr)}</td><td>${esc(p.driver||'—')}</td></tr>`}).join('')}</tbody></table>`:'<div class="dash-empty">Aucune livraison planifiée.</div>';
+async function renderUpcomingDeliveriesFromPlanning(){
+  const today=localISODateGlobal(new Date());
+  let planRows=[];
+  let cancelRows=[];
+  let serverLoaded=false;
+
+  // Use the same source as Planning des livraisons: maintenance events.
+  // Query the two event types separately for maximum compatibility with
+  // existing Supabase/RLS configurations.
+  try{
+    const [plannedRes,cancelRes]=await Promise.all([
+      withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,type,travaux,created_at,created_by').eq('type','Planification livraison').order('created_at',{ascending:true}).limit(1000),7000),
+      withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,type,travaux,created_at,created_by').eq('type','Annulation planification livraison').order('created_at',{ascending:true}).limit(1000),7000)
+    ]);
+    if(plannedRes?.error)throw plannedRes.error;
+    if(cancelRes?.error)throw cancelRes.error;
+    planRows=plannedRes.data||[];
+    cancelRows=cancelRes.data||[];
+    serverLoaded=true;
+  }catch(e){
+    console.warn('Lecture planning direct impossible',e);
   }
-  const caps=['2.5T','3T','3.8T','5T','7T','10T','12T'];
-  const counts=caps.map(cap=>CHARIOTS.filter(c=>fmtCapacity(c.capacity)===cap||String(c.capacity||'').trim().toUpperCase()===cap).length);
-  const max=Math.max(1,...counts);
-  const total=CHARIOTS.length;
-  const bars=document.getElementById('capacityBars');
-  const summary=document.getElementById('capacitySummary');
-  if(summary)summary.innerHTML=`<strong>${total}</strong><span>chariot${total!==1?'s':''} au total</span>`;
-  if(bars)bars.innerHTML=caps.map((cap,i)=>`<div class="capacity-bar-item"><div class="capacity-value">${counts[i]}</div><div class="capacity-bar"><span style="height:${Math.max(8,Math.round(counts[i]/max*110))}px"></span></div><div class="capacity-label">${esc(cap)}</div></div>`).join('');
+
+  const cancelled=new Set();
+  for(const row of cancelRows){
+    const payload=parseDeliveryEvent(row);
+    if(payload?.id)cancelled.add(String(payload.id));
+  }
+
+  let plans=[];
+  for(const row of planRows){
+    const payload=parseDeliveryEvent(row);
+    if(!payload||!payload.qr||!payload.date||cancelled.has(String(payload.id)))continue;
+    plans.push(payload);
+  }
+
+  // Fallback to the shared cache only when the live planning read failed.
+  if(!serverLoaded){
+    const cached=readCachedDeliveryPlans();
+    plans=Array.isArray(cached)?cached.filter(p=>p&&p.qr&&p.date):[];
+  }else{
+    cacheDeliveryPlans(plans);
+  }
+
+  const upcoming=plans
+    .filter(p=>String(p.date)>=today)
+    .sort((a,b)=>String(a.date+' '+(a.time||'99:99')).localeCompare(String(b.date+' '+(b.time||'99:99'))));
+
+  const planned=document.getElementById('plannedKpi');
+  if(planned)planned.textContent=String(upcoming.length);
+
+  const el=document.getElementById('upcomingDeliveries');
+  if(!el)return;
+
+  const rows=upcoming.slice(0,5);
+  if(!rows.length){
+    el.innerHTML='<div class="dash-empty">Aucune livraison à venir dans le planning.</div>';
+    return;
+  }
+
+  el.innerHTML=`<table><thead><tr><th>Date</th><th>Client</th><th>Destination</th><th>Chariot</th><th>Chauffeur</th></tr></thead><tbody>${rows.map(p=>{
+    const c=CHARIOTS.find(x=>String(x.qr_id)===String(p.qr));
+    const dateObj=parseLocalDate(p.date);
+    const dateText=dateObj.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
+    return `<tr><td><span class="upcoming-badge">${esc(dateText)}${p.time?' · '+esc(p.time):''}</span></td><td>${esc(c?.client||'Sans client')}</td><td>${esc(p.destination||'—')}</td><td>${esc(c?.chassis||c?.qr_id||p.qr)}</td><td>${esc(p.driver||'—')}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// Kept as a compatibility wrapper for older code paths.
+function renderProfessionalDashboard(){
+  renderUpcomingDeliveriesFromPlanning().catch(e=>console.warn('Rendu dashboard',e));
 }
