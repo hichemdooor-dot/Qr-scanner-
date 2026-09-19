@@ -1,7 +1,0 @@
-ROOT LOAD FIX V3
-
-The project-root URL redirects to index.html?root=1 before Supabase loads.
-The licence overlay is non-blocking and is forcibly released after 1.5 seconds.
-Supabase session restoration has a timeout so a network/storage delay cannot keep the login page on a spinner.
-Planning livraison modern UI with chauffeur + destination is included.
-Maintenance mode files are included.
