@@ -1,0 +1,6 @@
+SBI V62.1 - MOBILE FIX
+- Mobile drawer opaque dark panel
+- Overlay and scroll lock
+- Mobile logo and close button
+- Fixed hamburger state
+- Preserved desktop sidebar behavior

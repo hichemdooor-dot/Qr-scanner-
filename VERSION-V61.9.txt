@@ -1,0 +1,6 @@
+V61.9 — AUTHENTICATED DATA LOAD FIX
+- Added an independent authenticated Supabase REST fallback for the chariots table.
+- The fallback explicitly uses the restored Supabase access token.
+- Empty results are no longer silently treated as normal: the dashboard reports when the table is empty or blocked by RLS/permissions.
+- Activity/maintenance loading also has the same REST fallback.
+- Existing UI, mobile layout, dashboard design and functions are preserved.

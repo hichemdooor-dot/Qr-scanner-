@@ -224,37 +224,50 @@ async function restoreLoginSession(){
 
 const CHARIOT_SELECT_FIELDS='*';
 async function loadChariots(){
-  let lastError=null;
-  const attempts=[
-    ()=>supabaseClient.from('chariots').select('*').order('id',{ascending:false}).limit(5000),
-    ()=>supabaseClient.from('chariots').select('*').limit(5000)
-  ];
-  for(const makeQuery of attempts){
-    try{
-      const result=await withTimeout(makeQuery(),8000);
-      const {data,error}=result||{};
-      if(!error){
-        CHARIOTS=Array.isArray(data)?data:[];
-        CHARIOTS.sort((a,b)=>{
-          const da=new Date(a.created_at||a.updated_at||0).getTime(),db=new Date(b.created_at||b.updated_at||0).getTime();
-          if(db!==da)return db-da;
-          return Number(b.id||0)-Number(a.id||0);
-        });
-        try{localStorage.setItem('sbi_chariots_cache_v2',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
-        return CHARIOTS;
-      }
-      lastError=error;
-    }catch(e){lastError=e}
-  }
+  // Keep the original Supabase query as the primary path because this is the
+  // schema/query that the working version of the application used.
   try{
-    const cached=JSON.parse(localStorage.getItem('sbi_chariots_cache_v2')||localStorage.getItem('sbi_chariots_cache_v1')||'null');
-    if(Array.isArray(cached?.rows)){
-      CHARIOTS=cached.rows;
+    const result=await withTimeout(
+      supabaseClient.from('chariots').select('*').order('id',{ascending:false}),
+      10000
+    );
+    const {data,error}=result||{};
+    if(error)throw error;
+    CHARIOTS=Array.isArray(data)?data:[];
+    // Newest first. Prefer the same ordering semantics as the original app,
+    // while still using timestamps when present.
+    CHARIOTS.sort((a,b)=>{
+      const da=new Date(a.created_at||a.updated_at||0).getTime();
+      const db=new Date(b.created_at||b.updated_at||0).getTime();
+      if(Number.isFinite(da)&&Number.isFinite(db)&&db!==da)return db-da;
+      return Number(b.id||0)-Number(a.id||0);
+    });
+    try{localStorage.setItem('sbi_chariots_cache_v2',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
+    return CHARIOTS;
+  }catch(primaryError){
+    // Only use a fallback when the original query actually fails.
+    try{
+      const result=await withTimeout(supabaseClient.from('chariots').select('*'),10000);
+      const {data,error}=result||{};
+      if(error)throw error;
+      CHARIOTS=Array.isArray(data)?data:[];
+      CHARIOTS.sort((a,b)=>{
+        const da=new Date(a.created_at||a.updated_at||0).getTime();
+        const db=new Date(b.created_at||b.updated_at||0).getTime();
+        if(Number.isFinite(da)&&Number.isFinite(db)&&db!==da)return db-da;
+        return Number(b.id||0)-Number(a.id||0);
+      });
+      try{localStorage.setItem('sbi_chariots_cache_v2',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
       return CHARIOTS;
+    }catch(fallbackError){
+      // Do not silently convert a connection/permission error into a fake 0.
+      try{
+        const cached=JSON.parse(localStorage.getItem('sbi_chariots_cache_v2')||localStorage.getItem('sbi_chariots_cache_v1')||'null');
+        if(Array.isArray(cached?.rows)&&cached.rows.length){CHARIOTS=cached.rows;return CHARIOTS}
+      }catch(_){ }
+      throw fallbackError||primaryError;
     }
-  }catch(_){}
-  CHARIOTS=[];
-  throw lastError||new Error('Impossible de charger les chariots.');
+  }
 }
 
 function getUserDisplayName(){return currentUser?.user_metadata?.full_name||currentUser?.user_metadata?.name||currentUser?.email?.split('@')[0]||'Utilisateur'}
@@ -381,27 +394,49 @@ function isStock(c){return normalizeStatus(c.status)==='en stock'&&!String(c.cli
 function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;return `<div class="item" onclick="location.href='chariot.html?id=${encodeURIComponent(id)}'"><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
 async function dashboardPage(){
   if(!await session())return;
-  let dataLoadError=null;
-  try{await loadChariots()}catch(e){dataLoadError=e;console.error('Chargement des chariots du dashboard impossible',e)}
-  try{await withTimeout(loadDeliveryPlans({migrateLocal:true}),8000)}catch(e){console.warn('Planning dashboard',e)}
   renderConnectedUser();
-  $('#dashDate').textContent=new Date().toLocaleString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  $('#total').textContent=dataLoadError?'—':CHARIOTS.length;
-  $('#stock').textContent=dataLoadError?'—':CHARIOTS.filter(isStock).length;
-  $('#delivered').textContent=dataLoadError?'—':CHARIOTS.filter(isDelivered).length;
-  renderDashboardLatest();
-  if(!dataLoadError && CHARIOTS.length===0){
-    const hint=document.getElementById('dashboardDataHint');
-    if(hint)hint.textContent='Aucun chariot retourné par Supabase.';
+  if($('#dashDate'))$('#dashDate').textContent=new Date().toLocaleString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+  let dataLoadError=null;
+  try{
+    await loadChariots();
+  }catch(e){
+    dataLoadError=e;
+    console.error('Chargement des chariots du dashboard impossible',e);
   }
+
+  // Render the main fleet KPIs immediately. Delivery/activity are loaded
+  // independently so a slow secondary query cannot leave the whole dashboard
+  // showing its static 0 / Chargement... placeholders.
+  if($('#stock'))$('#stock').textContent=dataLoadError?'—':CHARIOTS.filter(isStock).length;
+  if($('#delivered'))$('#delivered').textContent=dataLoadError?'—':CHARIOTS.filter(isDelivered).length;
+  if($('#plannedKpi'))$('#plannedKpi').textContent=0;
+  renderDashboardLatest();
+
   if(dataLoadError){
-    const msg='Impossible de charger les données Supabase. Vérifiez la connexion puis actualisez la page.';
-    if($('#latestRows'))$('#latestRows').innerHTML=`<tr><td colspan=5 class=\"dash-empty\">${esc(msg)}</td></tr>`;
-    if($('#activityList'))$('#activityList').innerHTML=`<div class=\"dash-empty\">${esc(msg)}</div>`;
-    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML=`<div class=\"dash-empty\">${esc(msg)}</div>`;
+    const msg='Erreur de chargement des chariots : '+friendlySupabaseError(dataLoadError);
+    if($('#latestRows'))$('#latestRows').innerHTML=`<tr><td colspan="5" class="dash-empty">${esc(msg)}</td></tr>`;
+    if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Données indisponibles.</div>';
+    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML='<div class="dash-empty">Données indisponibles.</div>';
     return;
   }
-  await loadDashboardNotifications();
+
+  // Load the secondary dashboard sections independently. Their failures must
+  // never reset or hide the chariot data already rendered above.
+  let plans=[];
+  try{
+    await withTimeout(loadDeliveryPlans({migrateLocal:true}),8000);
+    plans=readCachedDeliveryPlans();
+  }catch(e){
+    console.warn('Planning dashboard',e);
+    plans=readCachedDeliveryPlans();
+  }
+  if($('#plannedKpi'))$('#plannedKpi').textContent=plans.filter(p=>p&&p.date).length;
+
+  try{await loadDashboardNotifications()}catch(e){
+    console.warn('Activité dashboard',e);
+    if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Aucune activité récente.</div>';
+  }
   renderProfessionalDashboard();
 }
 function renderDashboardLatest(){
@@ -455,10 +490,17 @@ async function loadDashboardNotifications(){
     const r=await withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(8),8000);
     if(!r.error){
       data=r.data||[];
+      if(!data.length){
+        try{
+          const restRows=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=8',8);
+          if(restRows.length)data=restRows;
+        }catch(_){}
+      }
       try{localStorage.setItem('sbi_activity_cache_v1',JSON.stringify({savedAt:Date.now(),rows:data}))}catch(_){}
     }
   }catch(e){
     try{const c=JSON.parse(localStorage.getItem('sbi_activity_cache_v1')||'null');if(Array.isArray(c?.rows))data=c.rows}catch(_){}
+    if(!data.length){try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=8',8)}catch(_) {}}
   }
   const rows=data.filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe')).slice(0,6);
   const unread=rows.filter(x=>!localStorage.getItem('sbi_notif_read_'+x.id)).length;

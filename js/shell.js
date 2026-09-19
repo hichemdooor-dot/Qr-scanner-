@@ -30,7 +30,11 @@ function toggleMenu(force){
   overlay.classList.toggle('open',open);
   document.body.classList.toggle('menu-open',open);
   const btn=document.querySelector('.menu-btn');
-  if(btn){btn.setAttribute('aria-expanded',open?'true':'false'); btn.setAttribute('aria-label',open?'Fermer le menu':'Ouvrir le menu'); btn.textContent=open?'✕':'☰';}
+  if(btn){
+    btn.setAttribute('aria-expanded',open?'true':'false');
+    btn.setAttribute('aria-label',open?'Fermer le menu':'Ouvrir le menu');
+    btn.classList.toggle('is-open',open);
+  }
   if(open){
     const first=overlay.querySelector('.nav a');
     if(first) first.setAttribute('tabindex','0');
@@ -47,7 +51,17 @@ function toggleSidebar(force){
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('[data-nav]').forEach(x=>x.innerHTML=menuHTML());
   document.querySelectorAll('.menu-btn').forEach(btn=>{btn.setAttribute('aria-expanded','false');btn.setAttribute('aria-controls','mobileMenu');});
-  document.querySelectorAll('.overlay').forEach((ov,i)=>{ov.id=i?'mobileMenu'+i:'mobileMenu';});
+  document.querySelectorAll('.overlay').forEach((ov,i)=>{
+    ov.id=i?'mobileMenu'+i:'mobileMenu';
+    const side=ov.querySelector('.side');
+    if(side && !side.querySelector('.mobile-drawer-head')){
+      const head=document.createElement('div');
+      head.className='mobile-drawer-head';
+      head.innerHTML='<img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"><button type="button" class="mobile-drawer-close" aria-label="Fermer le menu">×</button>';
+      side.insertBefore(head,side.firstChild);
+      head.querySelector('.mobile-drawer-close').addEventListener('click',closeMobileMenu);
+    }
+  });
   document.querySelectorAll('.brand').forEach(el=>{el.innerHTML='<img class="site-logo" src="assets/logo-sbi-hangcha.png" alt="SBI HANGCHA">';});
   document.querySelectorAll('.avatar').forEach(el=>{
     const wrap=document.createElement('div');
