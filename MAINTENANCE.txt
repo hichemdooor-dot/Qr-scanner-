@@ -1,0 +1,21 @@
+MODE MAINTENANCE SBI
+
+Pour activer le mode maintenance :
+1. Ouvrir maintenance-config.js
+2. Remplacer :
+   enabled: false,
+   par :
+   enabled: true,
+3. Envoyer le fichier sur GitHub Pages.
+
+Pour désactiver :
+   enabled: false
+
+Pendant la maintenance :
+- Les utilisateurs standards sont redirigés vers maintenance.html.
+- L'administrateur peut se connecter depuis maintenance.html.
+- Une fois connecté en administrateur, l'accès au tableau de bord et aux pages du site reste autorisé.
+
+Le réglage "expectedReturn" peut contenir un texte comme :
+   "17 septembre 2026 à 15:00"
+ou rester vide.

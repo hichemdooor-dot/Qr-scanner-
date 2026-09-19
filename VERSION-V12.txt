@@ -1,0 +1,4 @@
+V12 - Mobile planning days fix
+- All 7 days of the delivery week are visible on mobile.
+- Mobile layout uses 2 columns and wraps all days instead of hiding Friday/Saturday/Sunday.
+- Existing menu mobile, delivery button, and delivery-date sorting features preserved.

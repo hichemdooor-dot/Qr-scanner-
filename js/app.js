@@ -348,6 +348,7 @@ function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);con
 async function dashboardPage(){
   if(!await session())return;
   await loadChariots();
+  try{await loadDeliveryPlans({migrateLocal:true})}catch(e){console.warn('Planning dashboard',e)}
   renderConnectedUser();
   $('#dashDate').textContent=new Date().toLocaleString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
   $('#total').textContent=CHARIOTS.length;
@@ -356,6 +357,7 @@ async function dashboardPage(){
   $('#maintenanceCount').textContent=CHARIOTS.filter(c=>normalizeStatus(c.status).includes('maintenance')).length;
   renderDashboardLatest();
   await loadDashboardNotifications();
+  renderProfessionalDashboard();
 }
 function renderDashboardLatest(){
   const rows=[...CHARIOTS].sort((a,b)=>new Date(b.created_at||b.updated_at||0)-new Date(a.created_at||a.updated_at||0)).slice(0,5);
@@ -386,21 +388,21 @@ function formatMaintenanceEvent(x,c){
   const normalized=normalizeStatus(type);
   const parts=eventDetails(x,payload);
   if(type==='Planification livraison' && payload){
-    return {title:'Livraison planifiée — '+chassis,details:parts.join(' • ')||'Planification enregistrée',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="14" r="2"/></svg>',kind:'delivery'};
+    return {title:'Livraison planifiée — '+chassis,details:parts.join(' • ')||'Planification enregistrée',icon:'▣',kind:'delivery'};
   }
   if(type==='Annulation planification livraison' && payload){
-    return {title:'Livraison annulée — '+chassis,details:parts.filter((_,i)=>i<4).join(' • ')||'Planification annulée',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',kind:'cancel'};
+    return {title:'Livraison annulée — '+chassis,details:parts.filter((_,i)=>i<4).join(' • ')||'Planification annulée',icon:'×',kind:'cancel'};
   }
   const delivered=normalized.includes('statut')&&normalizeStatus(x?.travaux).includes('livr');
-  if(delivered)return {title:'Statut changé en Livré — '+chassis,details:'Chariot passé au statut Livré',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11l3 5"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M5 17.5h10"/><path d="M9 12l2 2 4-4"/></svg>',kind:'delivered'};
+  if(delivered)return {title:'Statut changé en Livré — '+chassis,details:'Chariot passé au statut Livré',icon:'▰',kind:'delivered'};
   if(payload){
     const modificationParts=[];
     if(payload.date)modificationParts.push('Date : '+payload.date);
     if(payload.note)modificationParts.push('Observation : '+payload.note);
-    return {title:'Modification du chariot '+chassis,details:modificationParts.join(' • ')||'Modification enregistrée',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6L10 20H4v-6L14 4z"/><path d="M13 5l6 6"/></svg>',kind:'edit'};
+    return {title:'Modification du chariot '+chassis,details:modificationParts.join(' • ')||'Modification enregistrée',icon:'✎',kind:'edit'};
   }
   const clean=String(x?.travaux||'').trim();
-  return {title:'Modification du chariot '+chassis,details:clean||type||'Modification enregistrée',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6L10 20H4v-6L14 4z"/><path d="M13 5l6 6"/></svg>',kind:'edit'};
+  return {title:'Modification du chariot '+chassis,details:clean||type||'Modification enregistrée',icon:'✎',kind:'edit'};
 }
 async function loadDashboardNotifications(){
   let data=[];
@@ -536,8 +538,27 @@ async function deliveryPlanningPage(){
   function closeModal(){els.modal.classList.add('hidden');els.form.dataset.edit=''}
   async function refreshFromServer(){if(refreshBusy||document.visibilityState==='hidden')return;refreshBusy=true;try{const before=JSON.stringify(plans);const remote=await loadDeliveryPlans();if(JSON.stringify(remote)!==before){syncPlans(remote);renderWeek();renderList()}}catch(e){console.warn('Actualisation planning',e)}finally{refreshBusy=false}}
   async function removePlan(id){if(!confirm('Supprimer cette livraison du planning ?'))return;const p=plans.find(x=>x.id===id);if(!p)return;const payload={id:p.id,qr:p.qr,date:p.date,time:p.time||'',note:p.note||''};const {error}=await supabaseClient.from('maintenance').insert({qr_id:p.qr,date:p.date,technicien:currentUser?.email||getUserDisplayName(),type:'Annulation planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await loadDeliveryPlans()}catch(e){}syncPlans(DELIVERY_PLANS);renderWeek();renderList()}
-  els.form.onsubmit=async e=>{e.preventDefault();const qr=els.chariot.value,date=els.date.value,time=els.time.value,driver=els.driver.value.trim(),destination=els.destination.value.trim(),note=els.note.value.trim();if(!qr||!date||!time||!driver||!destination){alert('Veuillez renseigner le chariot, la date, l’heure, le chauffeur et la destination.');return}const edit=els.form.dataset.edit;const duplicate=plans.some(p=>String(p.qr)===String(qr)&&p.id!==edit);if(duplicate){alert('Ce chariot est déjà planifié pour une livraison.');return}const logicalId=edit||('dp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));const payload={id:logicalId,qr:String(qr),date:String(date),time:String(time||''),driver:String(driver||''),destination:String(destination||''),note:String(note||'')};const {error}=await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:currentUser?.email||getUserDisplayName(),type:'Planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await loadDeliveryPlans()}catch(e){alert('Planification enregistrée mais actualisation impossible : '+friendlySupabaseError(e))}syncPlans(DELIVERY_PLANS);selectedDate=date;weekStart=startOfWeek(parseDate(date));closeModal();refreshChariotOptions();renderWeek();renderList()};
+  els.form.onsubmit=async e=>{e.preventDefault();const qr=els.chariot.value,date=els.date.value||localDateISO(new Date()),time=els.time.value||'',driver=els.driver.value.trim(),destination=els.destination.value.trim(),note=els.note.value.trim();if(!qr){alert('Veuillez sélectionner un chariot.');return}const edit=els.form.dataset.edit;const duplicate=plans.some(p=>String(p.qr)===String(qr)&&p.id!==edit);if(duplicate){alert('Ce chariot est déjà planifié pour une livraison.');return}const logicalId=edit||('dp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));const payload={id:logicalId,qr:String(qr),date:String(date),time:String(time||''),driver:String(driver||''),destination:String(destination||''),note:String(note||'')};const {error}=await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:currentUser?.email||getUserDisplayName(),type:'Planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await loadDeliveryPlans()}catch(e){alert('Planification enregistrée mais actualisation impossible : '+friendlySupabaseError(e))}syncPlans(DELIVERY_PLANS);selectedDate=date;weekStart=startOfWeek(parseDate(date));closeModal();refreshChariotOptions();renderWeek();renderList()};
   els.cancel.onclick=closeModal;els.close?.addEventListener('click',closeModal);els.clearSearch?.addEventListener('click',()=>{els.search.value='';renderSearchResults();els.search.focus()});els.modal.addEventListener('click',e=>{if(e.target===els.modal)closeModal()});els.search?.addEventListener('input',renderSearchResults);els.search?.addEventListener('search',renderSearchResults);els.chariot?.addEventListener('change',()=>{if(els.search){els.search.value='';els.searchResults.innerHTML=''}});els.note?.addEventListener('input',updateNoteCount);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!els.modal.classList.contains('hidden'))closeModal()});els.plan.onclick=()=>openModal(selectedDate, new URLSearchParams(location.search).get('qr')||'');els.today.onclick=()=>{selectedDate=localDateISO(new Date());weekStart=startOfWeek(new Date());renderWeek();renderList()};els.prev.onclick=()=>{weekStart=addDays(weekStart,-7);renderWeek();renderList()};els.next.onclick=()=>{weekStart=addDays(weekStart,7);renderWeek();renderList()};
   window.addEventListener('focus',refreshFromServer);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFromServer()});setInterval(refreshFromServer,15000);
   renderWeek();renderList();
 }
+
+function renderProfessionalDashboard(){
+  const plans=readCachedDeliveryPlans().filter(p=>p&&p.date).sort((a,b)=>String(a.date+' '+(a.time||'')).localeCompare(String(b.date+' '+(b.time||'')))).slice(0,5);
+  const planned=document.getElementById('plannedKpi'); if(planned)planned.textContent=plans.length;
+  const upcoming=document.getElementById('upcomingDeliveries');
+  if(upcoming){
+    upcoming.innerHTML=plans.length?`<table><thead><tr><th>Date</th><th>Client</th><th>Destination</th><th>Chariot</th><th>Chauffeur</th></tr></thead><tbody>${plans.map(p=>{const c=CHARIOTS.find(x=>String(x.qr_id)===String(p.qr));return `<tr><td><span class="upcoming-badge">${esc(new Date(String(p.date)+'T00:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}))}${p.time?' · '+esc(p.time):''}</span></td><td>${esc(c?.client||'Sans client')}</td><td>${esc(p.destination||'—')}</td><td>${esc(c?.chassis||c?.qr_id||p.qr)}</td><td>${esc(p.driver||'—')}</td></tr>`}).join('')}</tbody></table>`:'<div class="dash-empty">Aucune livraison planifiée.</div>';
+  }
+  const engineMap={}; CHARIOTS.forEach(c=>{const k=String(c.engine||'Autres').trim()||'Autres';engineMap[k]=(engineMap[k]||0)+1});
+  const engineEntries=Object.entries(engineMap).sort((a,b)=>b[1]-a[1]).slice(0,5); const total=CHARIOTS.length||1;
+  const palette=['#0d78e6','#18a56b','#b69d61','#ef9d0d','#7e8d99'];
+  const donut=document.getElementById('engineDonut'), legend=document.getElementById('engineLegend'), totalEl=document.getElementById('engineTotal');
+  if(totalEl)totalEl.textContent=CHARIOTS.length;
+  if(donut){let cursor=0;const seg=engineEntries.map(([,v],i)=>{const a=cursor,b=cursor+v/total*100;cursor=b;return `${palette[i%palette.length]} ${a}% ${b}%`}).join(',');donut.style.background=`conic-gradient(${seg||'#dfe8f0 0 100%'})`}
+  if(legend)legend.innerHTML=engineEntries.length?engineEntries.map(([k,v],i)=>`<div class="legend-row"><span class="legend-dot" style="background:${palette[i%palette.length]}"></span><span>${esc(k)}</span><strong>${v} (${Math.round(v/total*100)}%)</strong></div>`).join(''):'<div class="dash-empty">Aucune donnée.</div>';
+  const caps=['2.5T','3T','3.8T','5T','7T','10T','12T'];const counts=caps.map(cap=>CHARIOTS.filter(c=>fmtCapacity(c.capacity)===cap||String(c.capacity||'').trim().toUpperCase()===cap).length);const max=Math.max(1,...counts);const bars=document.getElementById('capacityBars');
+  if(bars)bars.innerHTML=caps.map((cap,i)=>`<div class="capacity-bar-item"><div class="capacity-value">${counts[i]}</div><div class="capacity-bar"><span style="height:${Math.max(6,Math.round(counts[i]/max*52))}px"></span></div><div class="capacity-label">${esc(cap.replace('T',''))}T</div></div>`).join('');
+}
+
