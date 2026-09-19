@@ -1,4 +1,0 @@
-V7 — Mode maintenance dynamique
-
-Modifiez uniquement maintenance-config.js : enabled: true ou enabled: false.
-Le site relit ce fichier avec cache bypass a chaque ouverture.
