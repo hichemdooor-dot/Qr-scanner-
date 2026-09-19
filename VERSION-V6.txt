@@ -1,3 +1,0 @@
-V7 — Maintenance fresh-check fix
-
-La configuration maintenance-config.js est relue à chaque chargement avec fetch cache:no-store + timestamp afin que true/false modifié directement dans GitHub soit détecté sans changer manuellement la version du fichier.
