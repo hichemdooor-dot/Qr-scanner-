@@ -49,18 +49,25 @@ function toggleSidebar(force){
   if(btn)btn.setAttribute('aria-expanded',collapsed?'false':'true');
 }
 document.addEventListener('DOMContentLoaded',()=>{
-  document.querySelectorAll('[data-nav]').forEach(x=>x.innerHTML=menuHTML());
-  document.querySelectorAll('.menu-btn').forEach(btn=>{btn.setAttribute('aria-expanded','false');btn.setAttribute('aria-controls','mobileMenu');});
+  // Use the exact dashboard hamburger drawer on every page.
   document.querySelectorAll('.overlay').forEach((ov,i)=>{
     ov.id=i?'mobileMenu'+i:'mobileMenu';
     const side=ov.querySelector('.side');
-    if(side && !side.querySelector('.mobile-drawer-head')){
-      const head=document.createElement('div');
-      head.className='mobile-drawer-head';
-      head.innerHTML='<img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"><button type="button" class="mobile-drawer-close" aria-label="Fermer le menu">×</button>';
-      side.insertBefore(head,side.firstChild);
-      head.querySelector('.mobile-drawer-close').addEventListener('click',closeMobileMenu);
+    if(side && !side.classList.contains('mobile-notifications-sidebar') && !side.classList.contains('dash-sidebar')){
+      side.classList.add('dashboard-mobile-drawer');
+      side.innerHTML=`<div class="dash-logo"><img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"></div>
+        <nav class="dash-nav" data-nav></nav>
+        <div class="sidebar-promo"><img src="assets/sidebar-promo-preview.png" alt="Hangcha en Algérie"></div>
+        <div class="sidebar-foot">© 2026 SBI · Hangcha<br><span>Version 4.3</span></div>
+        <button type="button" class="mobile-drawer-close dashboard-menu-close" aria-label="Fermer le menu">×</button>`;
     }
+  });
+  document.querySelectorAll('[data-nav]').forEach(x=>x.innerHTML=menuHTML());
+  document.querySelectorAll('.menu-btn').forEach(btn=>{btn.setAttribute('aria-expanded','false');btn.setAttribute('aria-controls','mobileMenu');});
+  document.querySelectorAll('.overlay').forEach((ov,i)=>{
+    const side=ov.querySelector('.side');
+    const close=side?.querySelector('.mobile-drawer-close');
+    if(close) close.addEventListener('click',closeMobileMenu);
   });
   document.querySelectorAll('.brand').forEach(el=>{el.innerHTML='<img class="site-logo" src="assets/logo-sbi-hangcha.png" alt="SBI HANGCHA">';});
   document.querySelectorAll('.avatar').forEach(el=>{

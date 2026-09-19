@@ -1,0 +1,4 @@
+SBI V62.7 — Notifications only
+Baseline: V62.4 Notifications Fix
+Changes: new notifications at top, old notifications at bottom, mark all read, dashboard sidebar preserved.
+No V62.5 code used.

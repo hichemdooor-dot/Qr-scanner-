@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css?v=62.7">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <title>SBI — Notifications</title>
+</head>
+<body class="notifications-page professional-dashboard">
+  <header class="top notifications-top">
+    <button class="menu-btn mobile-only" onclick="toggleMenu()" aria-label="Ouvrir le menu">☰</button>
+    <div class="brand">SBI</div>
+    <div class="avatar" id="pageAvatar">H</div>
+  </header>
+
+  <aside class="dash-sidebar notifications-dash-sidebar">
+    <div class="dash-logo"><img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"></div>
+    <nav class="dash-nav" data-nav></nav>
+    <div class="sidebar-promo"><img src="assets/sidebar-promo-preview.png" alt="Hangcha en Algérie"></div>
+    <div class="sidebar-foot">© 2026 SBI · Hangcha<br><span>Version 4.3</span></div>
+  </aside>
+
+  <main class="notifications-main">
+    <div class="notifications-wrap">
+      <div class="notifications-head">
+        <div>
+          <h1>Notifications</h1>
+          <p>Suivi des dernières activités et modifications du parc.</p>
+        </div>
+        <div class="notifications-head-actions">
+          <span id="notificationsPageCount" class="notifications-count">0</span>
+          <button type="button" class="mark-all-read" id="markAllReadBtn" onclick="markAllNotificationsRead()">Marquer tout comme lu</button>
+          <a href="dashboard.html" class="back-link">← Tableau de bord</a>
+        </div>
+      </div>
+      <div class="page-card" id="notificationsCard">
+        <div class="notification-group notification-group-new">
+          <div class="notification-group-head">
+            <h2>Nouvelles notifications</h2>
+            <span id="newNotificationsCount">0</span>
+          </div>
+          <div id="newNotificationsList"></div>
+        </div>
+        <div class="notification-group notification-group-old">
+          <div class="notification-group-head">
+            <h2>Anciennes notifications</h2>
+            <span id="oldNotificationsCount">0</span>
+          </div>
+          <div id="oldNotificationsList"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="overlay notifications-overlay">
+    <aside class="dash-sidebar mobile-notifications-sidebar">
+      <div class="dash-logo"><img src="assets/sidebar-logo-highres.png" alt="HANGCHA SBI"></div>
+      <nav class="dash-nav" data-nav></nav>
+      <div class="sidebar-promo"><img src="assets/sidebar-promo-preview.png" alt="Hangcha en Algérie"></div>
+      <div class="sidebar-foot">© 2026 SBI · Hangcha<br><span>Version 4.3</span></div>
+      <button type="button" class="mobile-drawer-close dashboard-menu-close" aria-label="Fermer le menu">×</button>
+    </aside>
+  </div>
+
+  <footer class="pro-site-footer notifications-footer">
+    <div class="footer-brand"><strong>HANGCHA</strong><i>|</i><strong>SBI</strong><span>Lifting Your Business</span></div>
+    <div class="footer-links"><span>Chariots élévateurs</span><i>|</i><span>Pièces</span><i>|</i><span>Service après-vente</span><i>|</i><span>Partout en Algérie</span></div>
+    <div class="footer-country">🇩🇿</div>
+  </footer>
+
+  <script src="js/shell.js?v=34"></script>
+  <script src="maintenance-config.js?v=6"></script>
+  <script src="js/app.js?v=62.7"></script>
+  <script>initPage(notificationsPage())</script>
+</body>
+</html>

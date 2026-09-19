@@ -504,8 +504,8 @@ async function loadDashboardNotifications(){
   }
   const rows=data.filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe')).slice(0,6);
   const unread=rows.filter(x=>!localStorage.getItem('sbi_notif_read_'+x.id)).length;
-  $('#notificationCount').textContent=unread;
-  $('#notificationCountTitle').textContent=unread;
+  const bell=$('#notificationCount'); if(bell) bell.textContent=unread>99?'99+':String(unread);
+  const titleCount=$('#notificationCountTitle'); if(titleCount) titleCount.textContent=String(unread);
   $('#notificationsList').innerHTML=rows.length?`<div class="alerts-table-wrap"><table class="alerts-table"><thead><tr><th>Chariot</th><th>Type</th><th>Statut</th><th>Date</th></tr></thead><tbody>${rows.slice(0,5).map((x)=>{
     const c=CHARIOTS.find(v=>String(v.qr_id)===String(x.qr_id));
     const ev=formatMaintenanceEvent(x,c);
@@ -523,7 +523,67 @@ async function loadDashboardNotifications(){
   }).join(''):'<div class="dash-empty">Aucune activité.</div>';
 }
 function relativeTime(iso){const ms=Date.now()-new Date(iso).getTime(),m=Math.max(0,Math.floor(ms/60000));if(m<1)return'À l’instant';if(m<60)return`Il y a ${m} min`;const h=Math.floor(m/60);if(h<24)return`Il y a ${h} h`;const d=Math.floor(h/24);return`Il y a ${d} j`}
-function markDashboardNotificationsRead(){document.querySelectorAll('.notification-row').forEach((row)=>{row.classList.remove('notification-new')});document.querySelectorAll('#notificationsList .view-chariot').forEach(b=>{const s=b.getAttribute('onclick')||'',m=s.match(/sbi_notif_read_([^']+)/);if(m)localStorage.setItem('sbi_notif_read_'+m[1],'1')});$('#notificationCount').textContent='0';$('#notificationCountTitle').textContent='0'}
+function markDashboardNotificationsRead(){document.querySelectorAll('.notification-row').forEach(row=>row.classList.remove('notification-new'));document.querySelectorAll('#notificationsList [data-notification-id]').forEach(b=>{const id=b.getAttribute('data-notification-id');if(id)localStorage.setItem('sbi_notif_read_'+id,'1')});const bell=$('#notificationCount');if(bell)bell.textContent='0';const titleCount=$('#notificationCountTitle');if(titleCount)titleCount.textContent='0'}
+
+let NOTIFICATIONS_PAGE_ROWS=[];
+function notificationReadKey(id){return 'sbi_notif_read_'+String(id)}
+function isNotificationRead(id){return localStorage.getItem(notificationReadKey(id))==='1'}
+function markNotificationRead(id){if(id!=null)localStorage.setItem(notificationReadKey(id),'1')}
+function renderNotificationGroup(listEl,rows,isNew){
+  const box=$(listEl); if(!box)return;
+  if(!rows.length){
+    box.innerHTML='<div class="notification-group-empty">'+(isNew?'Aucune nouvelle notification.':'Aucune ancienne notification.')+'</div>';
+    return;
+  }
+  box.innerHTML=rows.map(x=>{
+    const c=CHARIOTS.find(v=>String(v.qr_id)===String(x.qr_id));
+    const ev=formatMaintenanceEvent(x,c);
+    const time=x.created_at?relativeTime(x.created_at):'';
+    const href=x.qr_id?'chariot.html?id='+encodeURIComponent(x.qr_id):'historique.html';
+    return `<article class="notification-page-row ${isNew?'is-new':'is-old'}">
+      <div class="notification-page-icon">${esc(ev.icon)}</div>
+      <div class="notification-page-body">
+        <div class="notification-page-title">${esc(ev.title)} ${isNew?'<span class="new-badge">Nouveau</span>':''}</div>
+        <div class="notification-page-meta">${esc(ev.details||'')}${time?' · '+esc(time):''}</div>
+      </div>
+      <button class="view-chariot" type="button" data-notification-id="${esc(x.id)}" onclick="markNotificationRead('${esc(x.id)}');location.href='${href}'">Voir le chariot</button>
+    </article>`;
+  }).join('');
+}
+function renderNotificationsPage(){
+  const unread=NOTIFICATIONS_PAGE_ROWS.filter(x=>!isNotificationRead(x.id));
+  const old=NOTIFICATIONS_PAGE_ROWS.filter(x=>isNotificationRead(x.id));
+  const pageCount=$('#notificationsPageCount'),newCount=$('#newNotificationsCount'),oldCount=$('#oldNotificationsCount'),markBtn=$('#markAllReadBtn');
+  if(pageCount)pageCount.textContent=unread.length>99?'99+':String(unread.length);
+  if(newCount)newCount.textContent=String(unread.length);
+  if(oldCount)oldCount.textContent=String(old.length);
+  if(markBtn){markBtn.disabled=unread.length===0;markBtn.classList.toggle('disabled',unread.length===0)}
+  renderNotificationGroup('#newNotificationsList',unread,true);
+  renderNotificationGroup('#oldNotificationsList',old,false);
+  const bell=$('#notificationCount');if(bell)bell.textContent=unread.length>99?'99+':String(unread.length);
+}
+function markAllNotificationsRead(){
+  if(!NOTIFICATIONS_PAGE_ROWS.length)return;
+  NOTIFICATIONS_PAGE_ROWS.forEach(x=>markNotificationRead(x.id));
+  renderNotificationsPage();
+}
+async function notificationsPage(){
+  if(!await session())return;
+  renderConnectedUser();
+  const newBox=$('#newNotificationsList'),oldBox=$('#oldNotificationsList');
+  if(newBox)newBox.innerHTML='<div class="dash-empty">Chargement...</div>';
+  if(oldBox)oldBox.innerHTML='<div class="dash-empty">Chargement...</div>';
+  let data=[];
+  try{
+    const r=await withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(100),8000);
+    if(!r.error)data=r.data||[];
+    if(r.error)throw r.error;
+  }catch(e){
+    try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=100',100)}catch(_){data=[]}
+  }
+  NOTIFICATIONS_PAGE_ROWS=(data||[]).filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe'));
+  renderNotificationsPage();
+}
 async function chariotsPage(){if(!await session())return;await loadChariots();const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value;if(!e)return;let vals;if(id==='capacityFilter'){vals=['2.5T','3T','3.8T','5T','7T','10T','12T']}else{vals=[...new Set(CHARIOTS.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))}e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS;const sf=$('#statusFilter')?.value||'';if(sf==='stock')rows=rows.filter(isStock);if(sf==='delivered')rows=rows.filter(isDelivered);const q=$('#search')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id)?.value||norm(c[k])===norm($('#'+id).value)));$('#count').textContent=rows.length+' chariot'+(rows.length!==1?'s':'');$('#list').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun résultat.</div>'}$('#search').addEventListener('input',render);$('#statusFilter').addEventListener('change',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#statusFilter').value='';$('#search').value='';render()};render()}
 async function detailPage(){if(!await session())return;await loadChariots();try{await loadDeliveryPlans()}catch(e){DELIVERY_PLANS=readCachedDeliveryPlans()}const id=new URLSearchParams(location.search).get('id');current=CHARIOTS.find(c=>String(c.qr_id)===String(id));if(!current){$('#detail').innerHTML='<div class="empty">Chariot introuvable.</div>';return}$('#title').textContent=current.qr_id;$('#status').textContent=current.status||'—';const planned=getDeliveryPlan(current.qr_id);const plannedDate=planned?.date?formatPlannedDate(planned.date):'—';const plannedTime=planned?.time||'—';const plannedDriver=planned?.driver||'—';const plannedDestination=planned?.destination||'—';const groups=[['Identification',[['N° châssis',current.chassis],['N° de série',current.serial_number],['N° moteur',current.engine_number],['Moteur',current.engine]]],['Caractéristiques',[['Capacité',fmtCapacity(current.capacity)],['Hauteur de levage',current.lifting_height],['Dimensions des fourches',current.fork_dimension],['Type de mât',String(current.mast_type||'').toUpperCase()],['Type de pneu',current.tire_type],['Couleur',current.color]]],['Informations stock',[['Stock',current.stock],['Statut',current.status],['Client',current.client],['Date planifiée',plannedDate],['Heure planifiée',plannedTime],['Chauffeur planifié',plannedDriver],['Destination planifiée',plannedDestination],['Date de livraison',current.delivery_date]]],['Observations',[['Observations',current.observations]]]];$('#detail').innerHTML=groups.map(g=>`<div class="section"><h3>${esc(g[0])}</h3><div class="details">${g[1].map(([k,v])=>`<div class="kv"><small>${esc(k)}</small><b>${esc(v||'—')}</b></div>`).join('')}</div></div>`).join('');$('#edit').onclick=()=>location.href='nouveau-chariot.html?id='+encodeURIComponent(current.qr_id);const deliverBtn=$('#deliver');if(deliverBtn){if(isDelivered(current)||!isAdmin()){deliverBtn.style.display='none'}else{deliverBtn.style.display='inline-flex';deliverBtn.onclick=()=>markDelivered(current.qr_id)}}await renderMaintenanceHistory()}
 async function renderMaintenanceHistory(){const box=$('#history');if(!box||!current)return;const {data,error}=await supabaseClient.from('maintenance').select('id,date,technicien,type,travaux,created_at').eq('qr_id',current.qr_id).order('date',{ascending:false}).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="notice red">Erreur historique : '+esc(error.message)+'</div>';return}box.innerHTML=(data||[]).filter(x=>!DELIVERY_PLAN_TYPES.includes(String(x.type||''))).map(x=>`<div class="log"><b>${esc(x.date)} — ${esc(x.type||'Intervention')}</b><small>${esc(x.technicien||'—')}</small><div style="margin-top:7px">${esc(x.travaux||'—')}</div>${isAdmin()&&x.id?`<div class="actions"><button class="btn light" onclick="deleteMaintenance('${esc(x.id)}')">Supprimer</button></div>`:''}</div>`).join('')||'<div class="muted">Aucune intervention enregistrée.</div>'}
