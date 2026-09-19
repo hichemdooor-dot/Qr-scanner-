@@ -781,3 +781,4 @@ body.dashboard-page.sidebar-collapsed .professional-dashboard .pro-site-footer{m
 }
 
 .kpi-target-icon svg{width:34px;height:34px;display:block}.stat-blue .kpi-target-icon{color:#087bf0}.stat-green .kpi-target-icon{color:#16965a}.stat-dark .kpi-target-icon{color:#405a73}
+.dashboard-data-hint{display:none;max-width:calc(100% - 30px);margin:-4px auto 8px;color:#7b4d00;font-size:11px;text-align:center}.dashboard-data-hint:not(:empty){display:block}

@@ -65,6 +65,7 @@ async function enforceMaintenance(){
 let CHARIOTS=[],currentUser=null,current=null,editingQrId=null,licenseValid=false,DELIVERY_PLANS=[];
 const DELIVERY_PLAN_KEY='sbi_delivery_plans_v1',DELIVERY_PLAN_TYPES=['Planification livraison','Annulation planification livraison'];
 const $=s=>document.querySelector(s); const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('TIMEOUT')),ms))]);
 const norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
 function fmtCapacity(v){let x=String(v??'').trim();if(!x)return'—';x=x.replace(/\s*T\s*T?\s*$/i,'').trim();return x+' T'}
 function normalizeStatus(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}
@@ -221,17 +222,17 @@ async function restoreLoginSession(){
 }
 
 
-const CHARIOT_SELECT_FIELDS='id,qr_id,chassis,serial_number,engine_number,engine,stock,color,capacity,lifting_height,fork_dimension,mast_type,tire_type,status,client,delivery_date,observations,created_at,updated_at';
+const CHARIOT_SELECT_FIELDS='*';
 async function loadChariots(){
+  let lastError=null;
   const attempts=[
-    ()=>supabaseClient.from('chariots').select(CHARIOT_SELECT_FIELDS).order('created_at',{ascending:false}).limit(5000),
-    ()=>supabaseClient.from('chariots').select(CHARIOT_SELECT_FIELDS).limit(5000),
+    ()=>supabaseClient.from('chariots').select('*').order('id',{ascending:false}).limit(5000),
     ()=>supabaseClient.from('chariots').select('*').limit(5000)
   ];
-  let lastError=null;
   for(const makeQuery of attempts){
     try{
-      const {data,error}=await withTimeout(makeQuery(),12000);
+      const result=await withTimeout(makeQuery(),8000);
+      const {data,error}=result||{};
       if(!error){
         CHARIOTS=Array.isArray(data)?data:[];
         CHARIOTS.sort((a,b)=>{
@@ -239,20 +240,19 @@ async function loadChariots(){
           if(db!==da)return db-da;
           return Number(b.id||0)-Number(a.id||0);
         });
-        try{localStorage.setItem('sbi_chariots_cache_v1',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
+        try{localStorage.setItem('sbi_chariots_cache_v2',JSON.stringify({savedAt:Date.now(),rows:CHARIOTS}))}catch(_){ }
         return CHARIOTS;
       }
       lastError=error;
     }catch(e){lastError=e}
   }
   try{
-    const cached=JSON.parse(localStorage.getItem('sbi_chariots_cache_v1')||'null');
-    if(Array.isArray(cached?.rows)&&cached.rows.length){
+    const cached=JSON.parse(localStorage.getItem('sbi_chariots_cache_v2')||localStorage.getItem('sbi_chariots_cache_v1')||'null');
+    if(Array.isArray(cached?.rows)){
       CHARIOTS=cached.rows;
-      console.warn('Supabase chariots indisponible, utilisation des données en cache.',lastError);
       return CHARIOTS;
     }
-  }catch(_){ }
+  }catch(_){}
   CHARIOTS=[];
   throw lastError||new Error('Impossible de charger les chariots.');
 }
@@ -383,13 +383,17 @@ async function dashboardPage(){
   if(!await session())return;
   let dataLoadError=null;
   try{await loadChariots()}catch(e){dataLoadError=e;console.error('Chargement des chariots du dashboard impossible',e)}
-  try{await loadDeliveryPlans({migrateLocal:true})}catch(e){console.warn('Planning dashboard',e)}
+  try{await withTimeout(loadDeliveryPlans({migrateLocal:true}),8000)}catch(e){console.warn('Planning dashboard',e)}
   renderConnectedUser();
   $('#dashDate').textContent=new Date().toLocaleString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
   $('#total').textContent=dataLoadError?'—':CHARIOTS.length;
   $('#stock').textContent=dataLoadError?'—':CHARIOTS.filter(isStock).length;
   $('#delivered').textContent=dataLoadError?'—':CHARIOTS.filter(isDelivered).length;
   renderDashboardLatest();
+  if(!dataLoadError && CHARIOTS.length===0){
+    const hint=document.getElementById('dashboardDataHint');
+    if(hint)hint.textContent='Aucun chariot retourné par Supabase.';
+  }
   if(dataLoadError){
     const msg='Impossible de charger les données Supabase. Vérifiez la connexion puis actualisez la page.';
     if($('#latestRows'))$('#latestRows').innerHTML=`<tr><td colspan=5 class=\"dash-empty\">${esc(msg)}</td></tr>`;
@@ -447,7 +451,15 @@ function formatMaintenanceEvent(x,c){
 }
 async function loadDashboardNotifications(){
   let data=[];
-  try{const r=await supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(8);if(!r.error)data=r.data||[]}catch(e){}
+  try{
+    const r=await withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(8),8000);
+    if(!r.error){
+      data=r.data||[];
+      try{localStorage.setItem('sbi_activity_cache_v1',JSON.stringify({savedAt:Date.now(),rows:data}))}catch(_){}
+    }
+  }catch(e){
+    try{const c=JSON.parse(localStorage.getItem('sbi_activity_cache_v1')||'null');if(Array.isArray(c?.rows))data=c.rows}catch(_){}
+  }
   const rows=data.filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe')).slice(0,6);
   const unread=rows.filter(x=>!localStorage.getItem('sbi_notif_read_'+x.id)).length;
   $('#notificationCount').textContent=unread;
