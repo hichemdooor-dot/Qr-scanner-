@@ -1,0 +1,6 @@
+SBI V62.2 — Mobile menu visibility fix
+- Mobile drawer forced dark/opaque
+- All navigation items visible with white text
+- Larger menu typography and icons
+- Prevent desktop/legacy CSS from overriding mobile drawer
+- Dashboard header/menu button preserved
