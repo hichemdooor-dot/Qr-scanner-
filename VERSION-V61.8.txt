@@ -1,6 +1,0 @@
-V61.8 — DASHBOARD DATA FIX
-- Restored direct Supabase chariots query using select(*) to match the previously working schema.
-- Added a real global query timeout helper (fixes V61.7 ReferenceError around withTimeout).
-- Added cached chariots fallback and bounded planning/activity queries.
-- Dashboard no longer remains indefinitely on Loading... when maintenance/planning requests fail.
-- Kept all V61.7 UI/design changes and functionality.

@@ -1,6 +1,0 @@
-V61.3 — Dashboard streamlined and preview-aligned
-- Removed Maintenance / Alertes and Photos / Documents from navigation
-- Removed maintenance KPI and motor distribution
-- Kept capacity distribution and upcoming deliveries
-- High-resolution banner crop and crisp sidebar logo
-- Centered responsive footer

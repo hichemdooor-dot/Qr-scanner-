@@ -1,5 +1,0 @@
-V61.7 — Dashboard data loading fix
-- Robust Supabase chariots loading with ordered + unordered fallbacks
-- Timeout and local cache fallback
-- Dashboard no longer leaves fake 0/Chargement state when the query fails
-- UI/functions preserved from V61.6

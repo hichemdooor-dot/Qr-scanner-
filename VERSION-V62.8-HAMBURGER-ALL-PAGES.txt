@@ -1,2 +1,0 @@
-V62.8
-Hamburger/mobile drawer now uses the same dashboard sidebar on every page. No other functional changes intended.

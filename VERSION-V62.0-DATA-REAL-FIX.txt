@@ -1,2 +1,0 @@
-SBI V62.0
-Dashboard data fix: original Supabase chariots query restored as primary path; main KPIs render independently from activity/planning queries; no fake 0 on load failure; cache-busting v62.0.

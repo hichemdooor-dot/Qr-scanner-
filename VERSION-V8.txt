@@ -1,6 +1,0 @@
-V8 — Maintenance fiable et dynamique
-
-- maintenance-config.js est relu avec cache bypass (fetch cache:no-store + timestamp).
-- Quand enabled:true, index.html redirige immédiatement vers maintenance.html sans attendre Supabase/licence.
-- La page maintenance conserve la connexion administrateur.
-- Pour activer : enabled: true. Pour désactiver : enabled: false.
