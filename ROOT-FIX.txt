@@ -1,7 +1,0 @@
-ROOT URL FIX
-
-The project root now immediately redirects to ./index.html?root=1 before loading Supabase.
-This prevents a cached/incorrect root document from blocking startup.
-
-After uploading: test https://hichemdooor-dot.github.io/chariots-elevateurs/
-If Chrome still shows an old page, open the root once with ?v=20260917 and then reload.
