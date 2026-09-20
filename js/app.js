@@ -199,16 +199,15 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&$('#email')&&$('#pas
 async function logUserConnection(action){
   try{
     if(!currentUser)return;
-    const now=new Date();
-    const details=JSON.stringify({action:String(action||'Connexion'),user_agent:navigator.userAgent,at:now.toISOString()});
-    const {error}=await supabaseClient.from('maintenance').insert({
-      qr_id:'SYSTEM',
-      date:now.toISOString().slice(0,10),
-      technicien:currentUser.email||getUserDisplayName(),
-      type:action==='Déconnexion'?'Déconnexion utilisateur':'Connexion utilisateur',
-      travaux:details,
-      created_by:currentUser.id
-    });
+    const normalizedAction=action==='Déconnexion'?'Déconnexion':'Connexion';
+    const payload={
+      user_id:currentUser.id,
+      user_email:currentUser.email||getUserDisplayName(),
+      action:normalizedAction,
+      user_agent:navigator.userAgent,
+      created_at:new Date().toISOString()
+    };
+    const {error}=await supabaseClient.from('sbi_user_connection_logs').insert(payload);
     if(error)console.warn('Journal connexion non enregistré',error);
   }catch(e){console.warn('Journal connexion non enregistré',e)}
 }
@@ -289,7 +288,7 @@ async function loadChariots(){
 
 function getUserDisplayName(){return currentUser?.user_metadata?.full_name||currentUser?.user_metadata?.name||currentUser?.email?.split('@')[0]||'Utilisateur'}
 function getUserRoleLabel(){return isAdmin()?'Administrateur':'Utilisateur'}
-function renderConnectedUser(){const name=getUserDisplayName(),role=getUserRoleLabel();if($('#welcomeUser'))$('#welcomeUser').textContent=name;if($('#userTopName'))$('#userTopName').textContent=name;if($('#userTopRole'))$('#userTopRole').textContent=role;if($('#userTopAvatar'))$('#userTopAvatar').textContent=String(name).trim().charAt(0).toUpperCase()||'U';if(isAdmin()){$('#userMenuAdmin')?.classList.remove('hidden')}}
+function renderConnectedUser(){const name=getUserDisplayName(),role=getUserRoleLabel();if($('#welcomeUser'))$('#welcomeUser').textContent=name;if($('#userTopName'))$('#userTopName').textContent=name;if($('#userTopRole'))$('#userTopRole').textContent=role;if($('#userTopAvatar'))$('#userTopAvatar').textContent=String(name).trim().charAt(0).toUpperCase()||'U';document.querySelectorAll('.admin-only-nav').forEach(el=>el.classList.toggle('hidden',!isAdmin()));if(isAdmin()){$('#userMenuAdmin')?.classList.remove('hidden')}}
 function toggleUserMenu(){const m=$('#userMenu');if(m)m.classList.toggle('hidden')}
 document.addEventListener('click',e=>{const w=document.querySelector('.user-menu-wrap');if(w&&!w.contains(e.target))$('#userMenu')?.classList.add('hidden')});
 async function profilePage(){if(!await session())return;renderConnectedUser();if($('#profileName'))$('#profileName').textContent=getUserDisplayName();if($('#profileEmail'))$('#profileEmail').textContent=currentUser?.email||'—';if($('#profileRole'))$('#profileRole').textContent=getUserRoleLabel();}
@@ -356,6 +355,58 @@ async function resolvePasswordRequest(id){
 
 function statusClass(v){const s=normalizeStatus(v);return s==='en stock'?'status-stock':s==='livre'?'status-delivered':s.includes('reserve')?'status-reserved':s.includes('preparation')?'status-preparation':s.includes('pret a livrer')?'status-ready':s.includes('bloque')||s.includes('non conforme')?'status-blocked':s.includes('fabrication')?'status-fabrication':''}
 function isDelivered(c){return normalizeStatus(c.status)==='livre'||!!c.delivery_date}
+const AUTO_WORKFLOW_FORWARD={
+  'en fabrication':'En stock',
+  'en stock':'Réservé',
+  'reserve':'Préparation livraison',
+  'preparation livraison':'Prêt à livrer',
+  'pret a livrer':'Livré'
+};
+function statusFromStock(stock,client=''){if(String(client||'').trim())return 'Réservé';return normalizeStatus(stock)==='fabrication'?'En fabrication':(String(stock||'').trim()?'En stock':'En fabrication');}
+function automaticStatusForChariot(old,p){
+  if(!old)return statusFromStock(p.stock,p.client);
+  const oldStatus=normalizeStatus(old.status),stock=normalizeStatus(p.stock),client=String(p.client||'').trim();
+  if(['preparation livraison','pret a livrer','livre','bloque / non conforme'].includes(oldStatus))return old.status;
+  if(oldStatus==='reserve'&&!client&&!getDeliveryPlan(old.qr_id))return stock==='fabrication'?'En fabrication':(p.stock?'En stock':old.status);
+  if(oldStatus==='en stock'&&client)return 'Réservé';
+  if(oldStatus==='en fabrication'&&stock!=='fabrication'&&p.stock)return 'En stock';
+  if(oldStatus==='en fabrication'&&client)return 'Réservé';
+  return old.status||statusFromStock(p.stock,p.client);
+}
+async function transitionChariotStatus(qrId,nextStatus,reason=''){
+  if(!requireValidLicense())return false;
+  if(!currentUser){alert('Connexion requise.');return false}
+  const c=CHARIOTS.find(x=>String(x.qr_id)===String(qrId));
+  if(!c){alert('Chariot introuvable.');return false}
+  const from=normalizeStatus(c.status),to=normalizeStatus(nextStatus);
+  if(from===to)return true;
+  if(AUTO_WORKFLOW_FORWARD[from]!==nextStatus&&!(isAdmin()&&['livre','bloque / non conforme'].includes(to))){alert(`Transition non autorisée : ${c.status||'—'} → ${nextStatus}.`);return false}
+  const now=new Date(),updatedAt=now.toISOString(),payload={status:nextStatus,updated_at:updatedAt};
+  if(to==='livre')payload.delivery_date=localDateISO(now);
+  const {error}=await supabaseClient.from('chariots').update(payload).eq('qr_id',qrId);
+  if(error){alert('Erreur : '+friendlySupabaseError(error));return false}
+  try{await supabaseClient.from('maintenance').insert({qr_id:qrId,date:localDateISO(now),technicien:currentUser.email,type:'Statut',travaux:reason||`Statut : ${c.status||'—'} → ${nextStatus}`,created_by:currentUser.id})}catch(e){console.warn('Historique de statut non enregistré',e)}
+  Object.assign(c,payload);return true;
+}
+function setupAutomaticStatusField(old){
+  const display=document.getElementById('statusDisplay'),hidden=document.getElementById('statusAuto');if(!display||!hidden)return;
+  const stock=document.querySelector('[name="stock"]')?.value||'',client=document.querySelector('[name="client"]')?.value||'',value=String(old?.status||statusFromStock(stock,client));
+  display.value=value;hidden.value=value;
+  if(!isAdmin()){display.disabled=true;display.title='Statut géré automatiquement par le workflow.';}
+  else{display.disabled=false;display.title='Admin : intervention manuelle possible.';display.addEventListener('change',()=>{hidden.value=display.value});}
+}
+function renderWorkflowAction(c,planned){
+  const b=document.getElementById('workflowAction');if(!b)return;
+  b.style.display='none';b.onclick=null;b.textContent='';b.className='btn';
+  const st=normalizeStatus(c.status),id=String(c.qr_id||'');
+  if(st==='en fabrication'){b.textContent='Passer en stock';b.style.display='inline-flex';b.title='Choisir le stock pour passer automatiquement à « En stock ». ';b.onclick=()=>location.href='nouveau-chariot.html?id='+encodeURIComponent(id)}
+  else if(st==='en stock'){b.textContent=String(c.client||'').trim()?'Réserver':'Affecter un client';b.style.display='inline-flex';b.title='Le statut devient automatiquement « Réservé » lorsqu’un client est renseigné.';b.onclick=()=>location.href='nouveau-chariot.html?id='+encodeURIComponent(id)}
+  else if(st==='reserve'){b.textContent=planned?'Passer en préparation':'Planifier';b.style.display='inline-flex';b.title=planned?'Passer automatiquement à « Préparation livraison ».':'Créer la planification de livraison.';b.onclick=()=>planned?workflowPrepareFromDetail(id):location.href='planning-livraisons.html?qr='+encodeURIComponent(id)}
+  else if(st==='preparation livraison'){b.textContent='Prêt à livrer';b.style.display='inline-flex';b.title='Marquer automatiquement la préparation comme terminée.';b.onclick=()=>markReadyToDeliver(id)}
+}
+async function workflowPrepareFromDetail(qrId){const c=CHARIOTS.find(x=>String(x.qr_id)===String(qrId));if(!c)return;if(!getDeliveryPlan(qrId)){alert('Planifiez d’abord une livraison pour ce chariot.');return}if(!confirm(`Passer ${c.chassis||qrId} en « Préparation livraison » ?`))return;const ok=await transitionChariotStatus(qrId,'Préparation livraison');if(ok)location.reload();}
+async function markReadyToDeliver(qrId){const c=CHARIOTS.find(x=>String(x.qr_id)===String(qrId));if(!c)return;if(normalizeStatus(c.status)!=='preparation livraison'){alert('Le chariot doit être en « Préparation livraison ».');return}if(!confirm(`Marquer ${c.chassis||qrId} comme « Prêt à livrer » ?`))return;const ok=await transitionChariotStatus(qrId,'Prêt à livrer');if(ok)location.reload();}
+
 function getDeliveryPlan(qrId){return DELIVERY_PLANS.find(p=>String(p.qr)===String(qrId))||null}
 function readCachedDeliveryPlans(){try{const raw=localStorage.getItem(DELIVERY_PLAN_KEY);const plans=raw?JSON.parse(raw):[];return Array.isArray(plans)?plans:[]}catch(e){return []}}
 function cacheDeliveryPlans(plans){try{localStorage.setItem(DELIVERY_PLAN_KEY,JSON.stringify(plans||[]))}catch(e){}}
@@ -409,7 +460,7 @@ function formatPlannedDate(iso){if(!iso)return '—';try{return parseLocalDate(i
 function parseLocalDate(iso){const [y,m,d]=String(iso).split('-').map(Number);return new Date(y||2000,(m||1)-1,d||1)}
 function localISODateGlobal(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 function isStock(c){return normalizeStatus(c.status)==='en stock'&&!String(c.client||'').trim()}
-function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;return `<div class="item" onclick="location.href='chariot.html?id=${encodeURIComponent(id)}'"><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
+function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;const href='chariot.html?id='+encodeURIComponent(id);return `<div class="item"><a class="item-open-link" href="${href}" aria-label="Ouvrir le chariot ${esc(id)}"></a><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
 async function dashboardPage(){
   if(!await session())return;
   renderConnectedUser();
@@ -435,7 +486,7 @@ async function dashboardPage(){
     const msg='Erreur de chargement des chariots : '+friendlySupabaseError(dataLoadError);
     if($('#latestRows'))$('#latestRows').innerHTML=`<tr><td colspan="5" class="dash-empty">${esc(msg)}</td></tr>`;
     if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Données indisponibles.</div>';
-    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML='<div class="dash-empty">Données indisponibles.</div>';
+    if($('#dashboardUpcomingTimeline'))$('#dashboardUpcomingTimeline').innerHTML='<div class="dash-empty">Données indisponibles.</div>';
     return;
   }
 
@@ -449,7 +500,7 @@ async function dashboardPage(){
   }catch(e){
     console.warn('Prochaines livraisons dashboard',e);
     if($('#plannedKpi'))$('#plannedKpi').textContent='—';
-    if($('#upcomingDeliveries'))$('#upcomingDeliveries').innerHTML='<div class="dash-empty">Impossible de charger les livraisons prévues.</div>';
+    if($('#dashboardUpcomingTimeline'))$('#dashboardUpcomingTimeline').innerHTML='<div class="dash-empty">Impossible de charger les livraisons prévues.</div>';
   }
 
   try{await loadDashboardNotifications()}catch(e){
@@ -457,9 +508,26 @@ async function dashboardPage(){
     if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Aucune activité récente.</div>';
   }
 }
+function renderDashboardWatch(){
+  const set=(id,value)=>{const el=$('#'+id);if(el)el.textContent=String(value)};
+  const today=localISODateGlobal(new Date());
+  const planned=[...DELIVERY_PLANS].filter(p=>p&&p.date&&p.qr);
+  const plannedQrs=new Set(planned.map(p=>String(p.qr)));
+  const getMachine=(qr)=>CHARIOTS.find(c=>String(c.qr_id)===String(qr));
+  const deliveriesToday=planned.filter(p=>p.date===today).length;
+  const toPrepare=planned.filter(p=>!isDelivered(getMachine(p.qr))).length;
+  const reservedUnplanned=CHARIOTS.filter(c=>normalizeStatus(c.status)==='reserve'&&!isDelivered(c)&&!plannedQrs.has(String(c.qr_id))).length;
+  const lateDeliveries=planned.filter(p=>p.date<today&&!isDelivered(getMachine(p.qr))).length;
+  const deliveredToday=CHARIOTS.filter(c=>isDelivered(c)&&String(c.delivery_date||'')===today).length;
+  set('watchToday',deliveriesToday);
+  set('watchPrepare',toPrepare);
+  set('watchUnplanned',reservedUnplanned);
+  set('watchLate',lateDeliveries);
+  set('watchDeliveredToday',deliveredToday);
+}
 function renderDashboardLatest(){
   const rows=[...CHARIOTS].sort((a,b)=>new Date(b.created_at||b.updated_at||0)-new Date(a.created_at||a.updated_at||0)).slice(0,5);
-  $('#latestRows').innerHTML=rows.map(c=>`<tr onclick="location.href='chariot.html?id=${encodeURIComponent(c.qr_id||'')}'" style="cursor:pointer"><td><b>${esc(c.chassis||c.qr_id||'—')}</b>${c.client?`<div class="dash-client"><strong>Client :</strong> ${esc(c.client)}</div>`:''}</td><td>${esc(c.engine||'—')}</td><td>${esc(fmtCapacity(c.capacity))}</td><td><span class="dash-status ${isDelivered(c)?'delivered':''}">${esc(c.status||'—')}</span></td><td>${c.created_at?new Date(c.created_at).toLocaleDateString('fr-FR'):c.updated_at?new Date(c.updated_at).toLocaleDateString('fr-FR'):'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="dash-empty">Aucun chariot.</td></tr>';
+  $('#latestRows').innerHTML=rows.map(c=>{const href='chariot.html?id='+encodeURIComponent(c.qr_id||'');return `<tr onclick="location.href='${href}'" style="cursor:pointer"><td><a class="dash-chariot-link" href="${href}"><b>${esc(c.chassis||c.qr_id||'—')}</b>${c.client?`<div class="dash-client"><strong>Client :</strong> ${esc(c.client)}</div>`:''}</a></td><td>${esc(c.engine||'—')}</td><td>${esc(fmtCapacity(c.capacity))}</td><td><span class="dash-status ${isDelivered(c)?'delivered':''}">${esc(c.status||'—')}</span></td><td>${c.created_at?new Date(c.created_at).toLocaleDateString('fr-FR'):c.updated_at?new Date(c.updated_at).toLocaleDateString('fr-FR'):'—'}</td></tr>`}).join('')||'<tr><td colspan="5" class="dash-empty">Aucun chariot.</td></tr>';
 }
 function parseEventPayload(value){
   if(value&&typeof value==='object')return value;
@@ -520,24 +588,34 @@ async function loadDashboardNotifications(){
     try{const c=JSON.parse(localStorage.getItem('sbi_activity_cache_v1')||'null');if(Array.isArray(c?.rows))data=c.rows}catch(_){}
     if(!data.length){try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=8',8)}catch(_) {}}
   }
-  const rows=data.filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe')).slice(0,6);
+  const rows=data.filter(x=>{
+    const type=String(x.type||'').toLowerCase();
+    const qr=String(x.qr_id||'').trim().toLowerCase();
+    if(!x.qr_id||qr==='system')return false;
+    if(type.includes('connexion utilisateur')||type.includes('déconnexion utilisateur'))return false;
+    if(type.includes('demande changement mot de passe'))return false;
+    return true;
+  }).slice(0,6);
   const unread=rows.filter(x=>!localStorage.getItem('sbi_notif_read_'+x.id)).length;
   const bell=$('#notificationCount'); if(bell) bell.textContent=unread>99?'99+':String(unread);
   const titleCount=$('#notificationCountTitle'); if(titleCount) titleCount.textContent=String(unread);
-  $('#notificationsList').innerHTML=rows.length?`<div class="alerts-table-wrap"><table class="alerts-table"><thead><tr><th>Chariot</th><th>Type</th><th>Statut</th><th>Date</th></tr></thead><tbody>${rows.slice(0,5).map((x)=>{
+  const notificationsList=$('#notificationsList');
+  if(notificationsList) notificationsList.innerHTML=rows.length?`<div class="alerts-table-wrap"><table class="alerts-table"><thead><tr><th>Chariot</th><th>Type</th><th>Statut</th><th>Date</th></tr></thead><tbody>${rows.slice(0,5).map((x)=>{
     const c=CHARIOTS.find(v=>String(v.qr_id)===String(x.qr_id));
     const ev=formatMaintenanceEvent(x,c);
     const type=String(x.type||ev.title||'Intervention').replace(/Planification livraison/i,'Livraison').replace(/Modification chariot/i,'Modification');
     const status=ev.kind==='delivered'?'Livré':ev.kind==='cancel'?'Annulée':ev.kind==='delivery'?'Planifiée':'À faire';
     const statusClass=status==='Livré'?'delivered':status==='Planifiée'?'planned':status==='Annulée'?'cancelled':'todo';
-    return `<tr onclick="location.href='chariot.html?id=${encodeURIComponent(x.qr_id)}'" style="cursor:pointer"><td><b>${esc(c?.chassis||x.qr_id||'—')}</b></td><td>${esc(type)}</td><td><span class="alert-status ${statusClass}">${esc(status)}</span></td><td>${esc(formatPlannedDate(x.date)||'—')}</td></tr>`;
+    const href='chariot.html?id='+encodeURIComponent(x.qr_id); return `<tr onclick="location.href='${href}'" style="cursor:pointer"><td><a class="dash-chariot-link" href="${href}"><b>${esc(c?.chassis||x.qr_id||'—')}</b></a></td><td>${esc(type)}</td><td><span class="alert-status ${statusClass}">${esc(status)}</span></td><td>${esc(formatPlannedDate(x.date)||'—')}</td></tr>`;
   }).join('')}</tbody></table></div>`:'<div class="dash-empty">Aucune alerte récente.</div>';
   const acts=rows.slice(0,5);
-  $('#activityList').innerHTML=acts.length?acts.map((x,i)=>{
+  const activityList=$('#activityList');
+  if(!activityList)return;
+  activityList.innerHTML=acts.length?acts.map((x,i)=>{
     const c=CHARIOTS.find(v=>String(v.qr_id)===String(x.qr_id));
     const ev=formatMaintenanceEvent(x,c);
     const line=ev.kind==='delivered'?'green':ev.kind==='delivery'?'blue':ev.kind==='cancel'?'orange':i%3===1?'orange':'';
-    return `<div class="activity-item"><span class="activity-line ${line}"></span><span class="activity-icon">${ev.icon}</span><div class="activity-main"><b>${esc(ev.title)}</b><div>${esc(ev.details)}</div></div><span class="activity-time">${x.created_at?relativeTime(x.created_at):''}</span></div>`;
+    const href=x.qr_id?'chariot.html?id='+encodeURIComponent(x.qr_id):'historique.html'; return `<div class="activity-item"><span class="activity-line ${line}"></span><span class="activity-icon">${ev.icon}</span><div class="activity-main"><a class="dash-chariot-link" href="${href}"><b>${esc(ev.title)}</b></a><div>${esc(ev.details)}</div></div><span class="activity-time">${x.created_at?relativeTime(x.created_at):''}</span></div>`;
   }).join(''):'<div class="dash-empty">Aucune activité.</div>';
 }
 function relativeTime(iso){const ms=Date.now()-new Date(iso).getTime(),m=Math.max(0,Math.floor(ms/60000));if(m<1)return'À l’instant';if(m<60)return`Il y a ${m} min`;const h=Math.floor(m/60);if(h<24)return`Il y a ${h} h`;const d=Math.floor(h/24);return`Il y a ${d} j`}
@@ -599,34 +677,70 @@ async function notificationsPage(){
   }catch(e){
     try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=100',100)}catch(_){data=[]}
   }
-  NOTIFICATIONS_PAGE_ROWS=(data||[]).filter(x=>x.qr_id&&!String(x.type||'').toLowerCase().includes('demande changement mot de passe'));
+  NOTIFICATIONS_PAGE_ROWS=(data||[]).filter(x=>{
+    const type=String(x.type||'').toLowerCase();
+    const qr=String(x.qr_id||'').trim().toLowerCase();
+    if(!x.qr_id)return false;
+    if(qr==='system')return false;
+    if(type.includes('connexion utilisateur')||type.includes('déconnexion utilisateur'))return false;
+    if(type.includes('demande changement mot de passe'))return false;
+    return true;
+  });
   renderNotificationsPage();
 }
 async function chariotsPage(){if(!await session())return;await loadChariots();const initialSearch=new URLSearchParams(window.location.search).get('search')||'';const searchEl=$('#search');if(searchEl&&initialSearch){searchEl.value=initialSearch;}const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value;if(!e)return;let vals;if(id==='capacityFilter'){vals=['2.5T','3T','3.8T','5T','7T','10T','12T']}else{vals=[...new Set(CHARIOTS.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))}e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS;const sf=$('#statusFilter')?.value||'';if(sf==='stock')rows=rows.filter(isStock);if(sf==='delivered')rows=rows.filter(isDelivered);const q=$('#search')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id)?.value||norm(c[k])===norm($('#'+id).value)));$('#count').textContent=rows.length+' chariot'+(rows.length!==1?'s':'');$('#list').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun résultat.</div>'}$('#search').addEventListener('input',render);$('#statusFilter').addEventListener('change',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#statusFilter').value='';$('#search').value='';render()};render()}
-async function detailPage(){if(!await session())return;await loadChariots();try{await loadDeliveryPlans()}catch(e){DELIVERY_PLANS=readCachedDeliveryPlans()}const id=new URLSearchParams(location.search).get('id');current=CHARIOTS.find(c=>String(c.qr_id)===String(id));if(!current){$('#detail').innerHTML='<div class="empty">Chariot introuvable.</div>';return}$('#title').textContent=current.qr_id;$('#status').textContent=current.status||'—';const planned=getDeliveryPlan(current.qr_id);const plannedDate=planned?.date?formatPlannedDate(planned.date):'—';const plannedTime=planned?.time||'—';const plannedDriver=planned?.driver||'—';const plannedDestination=planned?.destination||'—';const groups=[['Identification',[['N° châssis',current.chassis],['N° de série',current.serial_number],['N° moteur',current.engine_number],['Moteur',current.engine]]],['Caractéristiques',[['Capacité',fmtCapacity(current.capacity)],['Hauteur de levage',current.lifting_height],['Dimensions des fourches',current.fork_dimension],['Type de mât',String(current.mast_type||'').toUpperCase()],['Type de pneu',current.tire_type],['Couleur',current.color]]],['Informations stock',[['Stock',current.stock],['Statut',current.status],['Client',current.client],['Date planifiée',plannedDate],['Heure planifiée',plannedTime],['Chauffeur planifié',plannedDriver],['Destination planifiée',plannedDestination],['Date de livraison',current.delivery_date]]],['Observations',[['Observations',current.observations]]]];$('#detail').innerHTML=groups.map(g=>`<div class="section"><h3>${esc(g[0])}</h3><div class="details">${g[1].map(([k,v])=>`<div class="kv"><small>${esc(k)}</small><b>${esc(v||'—')}</b></div>`).join('')}</div></div>`).join('');$('#edit').onclick=()=>location.href='nouveau-chariot.html?id='+encodeURIComponent(current.qr_id);const deliverBtn=$('#deliver');if(deliverBtn){if(isDelivered(current)||!isAdmin()){deliverBtn.style.display='none'}else{deliverBtn.style.display='inline-flex';deliverBtn.onclick=()=>markDelivered(current.qr_id)}}await renderMaintenanceHistory()}
+async function detailPage(){
+  if(!await session())return;
+  await loadChariots();
+  try{await loadDeliveryPlans()}catch(e){DELIVERY_PLANS=readCachedDeliveryPlans()}
+  const id=new URLSearchParams(location.search).get('id');
+  current=CHARIOTS.find(c=>String(c.qr_id)===String(id));
+  if(!current){$('#detail').innerHTML='<div class="empty">Chariot introuvable.</div>';return}
+  $('#title').textContent=current.qr_id;$('#status').textContent=current.status||'—';
+  const planned=getDeliveryPlan(current.qr_id),plannedDate=planned?.date?formatPlannedDate(planned.date):'—',plannedTime=planned?.time||'—',plannedDriver=planned?.driver||'—',plannedDestination=planned?.destination||'—';
+  const groups=[['Identification',[['N° châssis',current.chassis],['N° de série',current.serial_number],['N° moteur',current.engine_number],['Moteur',current.engine]]],['Caractéristiques',[['Capacité',fmtCapacity(current.capacity)],['Hauteur de levage',current.lifting_height],['Dimensions des fourches',current.fork_dimension],['Type de mât',String(current.mast_type||'').toUpperCase()],['Type de pneu',current.tire_type],['Couleur',current.color]]],['Informations stock',[['Stock',current.stock],['Statut',current.status],['Client',current.client],['Date planifiée',plannedDate],['Heure planifiée',plannedTime],['Chauffeur planifié',plannedDriver],['Destination planifiée',plannedDestination],['Date de livraison',current.delivery_date]]],['Observations',[['Observations',current.observations]]]];
+  $('#detail').innerHTML=groups.map(g=>`<div class="section"><h3>${esc(g[0])}</h3><div class="details">${g[1].map(([k,v])=>`<div class="kv"><small>${esc(k)}</small><b>${esc(v||'—')}</b></div>`).join('')}</div></div>`).join('');
+  $('#edit').onclick=()=>location.href='nouveau-chariot.html?id='+encodeURIComponent(current.qr_id);
+  renderWorkflowAction(current,!!planned);
+  const deliverBtn=$('#deliver');
+  if(deliverBtn){if(isDelivered(current)||!isAdmin())deliverBtn.style.display='none';else{deliverBtn.style.display='inline-flex';deliverBtn.onclick=()=>markDelivered(current.qr_id)}}
+  await renderMaintenanceHistory()
+}
 async function renderMaintenanceHistory(){const box=$('#history');if(!box||!current)return;const {data,error}=await supabaseClient.from('maintenance').select('id,date,technicien,type,travaux,created_at').eq('qr_id',current.qr_id).order('date',{ascending:false}).order('created_at',{ascending:false});if(error){box.innerHTML='<div class="notice red">Erreur historique : '+esc(error.message)+'</div>';return}box.innerHTML=(data||[]).filter(x=>!DELIVERY_PLAN_TYPES.includes(String(x.type||''))).map(x=>`<div class="log"><b>${esc(x.date)} — ${esc(x.type||'Intervention')}</b><small>${esc(x.technicien||'—')}</small><div style="margin-top:7px">${esc(x.travaux||'—')}</div>${isAdmin()&&x.id?`<div class="actions"><button class="btn light" onclick="deleteMaintenance('${esc(x.id)}')">Supprimer</button></div>`:''}</div>`).join('')||'<div class="muted">Aucune intervention enregistrée.</div>'}
 async function addMaintenance(){if(!requireValidLicense())return;if(!current){alert('Sélectionnez un chariot.');return}if(!currentUser){alert('Connectez-vous.');return}const types=[...document.querySelectorAll('#typeMultiOptions input:checked')].map(x=>x.value).join(', '),travaux=$('#travaux')?.value.trim()||'';if(!types&&!travaux){alert('Sélectionnez un type de modification ou indiquez les détails.');return}const {error}=await supabaseClient.from('maintenance').insert({qr_id:current.qr_id,date:$('#date')?.value||new Date().toISOString().slice(0,10),technicien:$('#technicien')?.value.trim()||currentUser.email,type:types,travaux,created_by:currentUser.id});if(error){alert('Erreur : '+error.message);return}document.querySelectorAll('#typeMultiOptions input').forEach(x=>x.checked=false);if($('#travaux'))$('#travaux').value='';await renderMaintenanceHistory()}
 async function deleteMaintenance(id){if(!requireAdmin())return;if(!confirm('Supprimer définitivement cette intervention ?'))return;const {error}=await supabaseClient.from('maintenance').delete().eq('id',id);if(error)alert('Erreur : '+error.message);else await renderMaintenanceHistory()}
 function nextQr(){let n=Math.max(0,...CHARIOTS.map(c=>Number(String(c.qr_id||'').match(/^CH-(\d+)$/i)?.[1]||0)))+1;return'CH-'+String(n).padStart(4,'0')}
-async function newPage(){if(!await session())return;await loadChariots();const id=new URLSearchParams(location.search).get('id');const old=CHARIOTS.find(c=>String(c.qr_id)===String(id));if(old){editingQrId=old.qr_id;$('#formTitle').textContent='Modifier '+old.qr_id;for(const [k,v] of Object.entries(old)){const el=document.querySelector(`[name="${k}"]`);if(el)el.value=v??''}}else{$('[name="qr_id"]').value=nextQr();editingQrId=null}if(!isAdmin()){const statusSelect=document.querySelector('[name="status"]');statusSelect?.querySelectorAll('option').forEach(o=>{if(normalizeStatus(o.value)==='livre')o.remove()});}
-  document.querySelectorAll('#chariotForm input,#chariotForm select,#chariotForm textarea').forEach(el=>el.addEventListener('input',updateSaveButtonState));document.querySelectorAll('#chariotForm select').forEach(el=>el.addEventListener('change',updateSaveButtonState));updateSaveButtonState()}
+async function newPage(){
+  if(!await session())return;
+  await loadChariots();
+  const id=new URLSearchParams(location.search).get('id');
+  const old=CHARIOTS.find(c=>String(c.qr_id)===String(id));
+  if(old){editingQrId=old.qr_id;$('#formTitle').textContent='Modifier '+old.qr_id;for(const [k,v] of Object.entries(old)){const el=document.querySelector(`[name="${k}"]`);if(el)el.value=v??''}}
+  else{$('[name="qr_id"]').value=nextQr();editingQrId=null;}
+  setupAutomaticStatusField(old);
+  document.querySelectorAll('#chariotForm input,#chariotForm select,#chariotForm textarea').forEach(el=>el.addEventListener('input',updateSaveButtonState));
+  document.querySelectorAll('#chariotForm select').forEach(el=>el.addEventListener('change',updateSaveButtonState));
+  updateSaveButtonState()
+}
 function updateSaveButtonState(){const ok=['chassis','color','engine','capacity','fork_dimension','tire_type'].every(k=>String(document.querySelector(`[name="${k}"]`)?.value||'').trim());$('#saveBtn')?.classList.toggle('save-ready',ok)}
 async function saveChariot(){
   if(!requireValidLicense())return;if(!currentUser){alert('Connectez-vous pour gérer les chariots.');return}
   const f=$('#chariotForm'),p=Object.fromEntries(new FormData(f).entries());
   for(const [k,label] of [['chassis','N° châssis'],['color','Couleur'],['engine','Type de moteur'],['capacity','Capacité'],['fork_dimension','Fourche'],['tire_type','Type de pneu']])if(!String(p[k]||'').trim()){alert(label+' obligatoire.');return}
-  const oldId=new URLSearchParams(location.search).get('id')||'';
-  const old=CHARIOTS.find(c=>String(c.qr_id)===String(oldId));
-  if(normalizeStatus(p.status)==='livre' && !isAdmin()){alert('Seul un Admin peut mettre un chariot en statut « Livré ».');return}
+  const oldId=new URLSearchParams(location.search).get('id')||'',old=CHARIOTS.find(c=>String(c.qr_id)===String(oldId));
+  const requestedStatus=String(p.status||'').trim();
+  p.status=(old&&isAdmin()&&requestedStatus&&normalizeStatus(requestedStatus)!==normalizeStatus(old.status))?requestedStatus:automaticStatusForChariot(old,p);
   const duplicate=CHARIOTS.find(c=>norm(c.chassis)===norm(p.chassis)&&norm(c.engine)===norm(p.engine)&&String(c.qr_id)!==String(oldId));
   if(duplicate){alert(`Le numéro de châssis « ${p.chassis} » existe déjà avec le même moteur (${p.engine}) — ${duplicate.qr_id}.`);return}
   p.updated_at=new Date().toISOString();p.delivery_date=p.delivery_date||null;p.qr_id=p.qr_id||nextQr();
   const {error}=oldId?await supabaseClient.from('chariots').update(p).eq('qr_id',oldId):await supabaseClient.from('chariots').insert(p);
   if(error){alert('Erreur : '+error.message);return}
   if(oldId&&old){
-    const labels={chassis:'N° châssis',serial_number:'N° de série',engine_number:'N° moteur',engine:'Moteur',capacity:'Capacité',lifting_height:'Hauteur de levage',fork_dimension:'Dimensions des fourches',mast_type:'Type de mât',tire_type:'Type de pneu',color:'Couleur',stock:'Stock',status:'Statut',client:'Client',delivery_date:'Date de livraison',observations:'Observations'};
+    const labels={chassis:'N° châssis',serial_number:'N° de série',engine_number:'N° moteur',engine:'Moteur',capacity:'Capacité',lifting_height:'Hauteur de levage',fork_dimension:'Fourche',mast_type:'Type de mât',tire_type:'Type de pneu',color:'Couleur',stock:'Stock',status:'Statut',client:'Client',delivery_date:'Date de livraison',observations:'Observations'};
     const changes=Object.keys(labels).filter(k=>String(old[k]??'')!==String(p[k]??'')).map(k=>`${labels[k]} : ${old[k]||'—'} → ${p[k]||'—'}`);
     if(changes.length){try{await supabaseClient.from('maintenance').insert({qr_id:p.qr_id,date:new Date().toISOString().slice(0,10),technicien:currentUser.email,type:'Modification chariot',travaux:changes.join(' • '),created_by:currentUser.id})}catch(e){console.warn('Notification modification non enregistrée',e)}}
+  }else{
+    try{await supabaseClient.from('maintenance').insert({qr_id:p.qr_id,date:new Date().toISOString().slice(0,10),technicien:currentUser.email,type:'Statut',travaux:`Statut initial automatique : ${p.status}`,created_by:currentUser.id})}catch(e){console.warn('Historique initial non enregistré',e)}
   }
   location.href='chariot.html?id='+encodeURIComponent(p.qr_id)
 }
@@ -645,20 +759,50 @@ async function loadConnectionHistory(){
   const box=$('#connectionHistory');
   if(!box)return;
   try{
-    const {data,error}=await withTimeout(supabaseClient.from('maintenance').select('id,technicien,type,travaux,created_at,created_by').in('type',['Connexion utilisateur','Déconnexion utilisateur']).order('created_at',{ascending:false}).limit(100),8000);
+    const {data,error}=await withTimeout(
+      supabaseClient
+        .from('sbi_user_connection_logs')
+        .select('id,user_id,user_email,action,user_agent,created_at')
+        .order('created_at',{ascending:false})
+        .limit(500),
+      8000
+    );
     if(error)throw error;
     const rows=data||[];
     if(!rows.length){box.innerHTML='<div class="empty">Aucune connexion enregistrée.</div>';return}
-    box.innerHTML=rows.map(x=>{
-      let details={};try{details=JSON.parse(x.travaux||'{}')}catch(e){}
-      const action=x.type==='Connexion utilisateur'?'Connexion':'Déconnexion';
-      const dt=x.created_at?new Date(x.created_at):null;
-      const when=dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):String(x.created_at||'—');
-      const device=String(details.user_agent||'').slice(0,90)||'—';
-      return `<div class="item sbi-connection-item" style="cursor:default"><div class="item-main"><div class="item-title">${esc(x.technicien||'Utilisateur')}</div><div class="meta"><span><strong>Action :</strong> ${esc(action)}</span><span><strong>Date :</strong> ${esc(when)}</span><span title="${esc(device)}"><strong>Appareil :</strong> ${esc(device)}</span></div></div><span class="badge ${action==='Connexion'?'':'red'}">${esc(action)}</span></div>`;
+
+    const groups=new Map();
+    rows.forEach(x=>{
+      const user=String(x.user_email||x.user_id||'Utilisateur').trim()||'Utilisateur';
+      if(!groups.has(user))groups.set(user,[]);
+      groups.get(user).push(x);
+    });
+
+    const sortedGroups=[...groups.entries()].sort((a,b)=>{
+      const ad=new Date(a[1][0]?.created_at||0).getTime();
+      const bd=new Date(b[1][0]?.created_at||0).getTime();
+      return bd-ad;
+    });
+
+    box.innerHTML=sortedGroups.map(([user,events])=>{
+      const latest=events[0];
+      const latestAction=String(latest.action||'Connexion')==='Connexion'?'Connexion':'Déconnexion';
+      const latestDt=latest.created_at?new Date(latest.created_at):null;
+      const latestWhen=latestDt&&!Number.isNaN(latestDt.getTime())?latestDt.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):String(latest.created_at||'—');
+      const eventHtml=events.map(x=>{
+        const action=String(x.action||'Connexion')==='Connexion'?'Connexion':'Déconnexion';
+        const dt=x.created_at?new Date(x.created_at):null;
+        const when=dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):String(x.created_at||'—');
+        const device=String(x.user_agent||'').slice(0,180)||'—';
+        return `<div class="connection-event"><div class="connection-event-main"><div class="connection-event-line"><span class="badge ${action==='Connexion'?'connection-green':'red'}">${esc(action)}</span><strong>${esc(when)}</strong></div><div class="meta"><span title="${esc(device)}"><strong>Appareil :</strong> ${esc(device)}</span></div></div></div>`;
+      }).join('');
+      return `<section class="connection-user-group"><div class="connection-user-head"><div><div class="connection-user-email">${esc(user)}</div><div class="meta">${events.length} événement${events.length>1?'s':''} · Dernière activité : ${esc(latestWhen)}</div></div><span class="badge ${latestAction==='Connexion'?'connection-green':'red'}">${esc(latestAction)}</span></div><div class="connection-user-events">${eventHtml}</div></section>`;
     }).join('');
-  }catch(e){box.innerHTML='<div class="notice red">Impossible de charger l’historique des connexions : '+esc(friendlySupabaseError(e))+'</div>'}
+  }catch(e){
+    box.innerHTML='<div class="notice red">Impossible de charger l’historique des connexions. Exécutez une fois le fichier <strong>SUPABASE_USER_CONNECTION_LOGS.sql</strong> dans Supabase SQL Editor.</div>';
+  }
 }
+
 async function gestionPage(){if(!await session())return;if(!requireAdmin()){$('#users').innerHTML='<div class="notice red">Accès administrateur requis.</div>';return}await loadSbiUsers();await loadPasswordRequests();await loadConnectionHistory()}
 function renderSbiUsers(users){$('#users').innerHTML=users.length?users.map(u=>{const email=String(u.email||'—');const role=String(u.role||'user');const status=u.disabled?'Désactivé':'Actif';return `<div class="item sbi-user-item" style="cursor:default"><div class="item-main sbi-user-main"><div class="item-title sbi-user-email" title="${esc(email)}">${esc(email)}</div><div class="meta sbi-user-meta"><span><strong>Rôle :</strong> ${esc(role)}</span><span><strong>Statut :</strong> ${esc(status)}</span></div></div><span class="badge ${u.disabled?'red':''} sbi-user-badge">${u.disabled?'Inactif':'Actif'}</span><div class="user-actions sbi-user-actions"><button class="btn light" onclick="toggleSbiUser('${esc(u.id)}',${!u.disabled})">${u.disabled?'Réactiver':'Désactiver'}</button><button class="btn danger" onclick="deleteSbiUser('${esc(u.id)}')">Supprimer</button></div></div>`}).join(''):'<div class="empty">Aucun utilisateur.</div>'}
 async function loadSbiUsers(){if(!requireAdmin())return;try{const {data,error}=await supabaseClient.rpc('admin_list_sbi_users');if(error)throw error;renderSbiUsers(data||[]);$('#userAdminMsg').textContent=(data||[]).length+' utilisateur(s).'}catch(e){$('#userAdminMsg').textContent='Erreur : '+friendlySupabaseError(e)}}
@@ -678,6 +822,7 @@ async function deliveryPlanningPage(){
     if(!DELIVERY_PLANS.length)alert('Impossible de charger le planning partagé : '+friendlySupabaseError(e));
   }
   let plans=[...DELIVERY_PLANS];
+  renderDashboardWatch();
   const els={week:$('#weekDays'),list:$('#deliveryList'),range:$('#rangeTitle'),modal:$('#deliveryModal'),form:$('#deliveryForm'),search:$('#deliverySearch'),searchResults:$('#deliverySearchResults'),clearSearch:$('#clearDeliverySearch'),chariot:$('#deliveryChariot'),date:$('#deliveryDate'),time:$('#deliveryTime'),driver:$('#deliveryDriver'),destination:$('#deliveryDestination'),note:$('#deliveryNote'),noteCount:$('#deliveryNoteCount'),close:$('#closeDeliveryModal'),today:$('#todayBtn'),prev:$('#prevWeek'),next:$('#nextWeek'),plan:$('#planBtn'),cancel:$('#cancelDelivery'),todayCount:$('#todayCount'),weekCount:$('#weekCount'),plannedCount:$('#plannedCount')};
   let selectedDate=localDateISO(new Date()), weekStart=startOfWeek(new Date()), refreshBusy=false;
   function localDateISO(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
@@ -685,7 +830,7 @@ async function deliveryPlanningPage(){
   function startOfWeek(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const n=x.getDay();const diff=n===0?-6:1-n;x.setDate(x.getDate()+diff);return x}
   function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
   function formatLong(s){return parseDate(s).toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}
-  function syncPlans(next){plans=(next||[]).filter(p=>{const c=getMachine(p.qr);return !c||!isDelivered(c)});cacheDeliveryPlans(plans)}
+  function syncPlans(next){plans=Array.isArray(next)?[...next]:[];cacheDeliveryPlans(plans)}
   function getMachine(qr){return CHARIOTS.find(c=>String(c.qr_id)===String(qr))}
   function availableChariots(excludeQr=''){
     const excluded=plans.filter(p=>String(p.qr)!==String(excludeQr)).map(p=>String(p.qr));
@@ -710,9 +855,9 @@ async function deliveryPlanningPage(){
   }
   function weekPlans(){const a=localDateISO(weekStart),b=localDateISO(addDays(weekStart,6));return plans.filter(p=>p.date>=a&&p.date<=b)}
   function renderStats(){const today=localDateISO(new Date());els.todayCount.textContent=plans.filter(p=>p.date===today).length;els.weekCount.textContent=weekPlans().length;els.plannedCount.textContent=plans.length}
-  function renderWeek(){const dates=Array.from({length:7},(_,i)=>addDays(weekStart,i));els.range.textContent=`Semaine du ${dates[0].toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})} au ${dates[6].toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}`;els.week.innerHTML=dates.map(d=>{const iso=localDateISO(d),n=plans.filter(p=>p.date===iso).length;return `<button type="button" class="delivery-day ${iso===selectedDate?'active':''}" data-date="${iso}"><div class="dow">${esc(d.toLocaleDateString('fr-FR',{weekday:'long'}))}</div><div class="date">${esc(d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}))}</div><div class="num">${n} livraison${n!==1?'s':''}</div></button>`}).join('');els.week.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{selectedDate=b.dataset.date;renderWeek();renderList()})}
-  function renderList(){let rows=plans.filter(p=>p.date===selectedDate).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));els.list.innerHTML=rows.length?rows.map(p=>{const c=getMachine(p.qr);return `<div class="delivery-row"><div class="delivery-time">${esc(p.time||'—')}</div><div class="delivery-main"><div class="delivery-title">${esc(c?.chassis||p.qr||'Chariot')}</div><div class="delivery-meta">${esc(c?.engine||'—')} · ${esc(fmtCapacity(c?.capacity))} · ${esc(c?.client||'Sans client')}</div>${p.driver?`<div class="delivery-meta"><strong>Chauffeur :</strong> ${esc(p.driver)}</div>`:''}${p.destination?`<div class="delivery-meta"><strong>Destination :</strong> ${esc(p.destination)}</div>`:''}${p.note?`<div class="delivery-meta">${esc(p.note)}</div>`:''}</div><div class="delivery-actions">${isAdmin()&&!isDelivered(c)?`<button class="btn deliver-plan-btn" type="button" data-deliver-plan="${esc(p.qr)}" data-plan-id="${esc(p.id)}">Livrer</button>`:''}<button class="btn light" type="button" data-edit="${esc(p.id)}">Modifier</button><button class="btn light" type="button" data-delete="${esc(p.id)}">Supprimer</button></div></div>`}).join(''):`<div class="delivery-empty">Aucune livraison planifiée pour ${esc(formatLong(selectedDate))}.</div>`;els.list.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEdit(b.dataset.edit));els.list.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removePlan(b.dataset.delete));els.list.querySelectorAll('[data-deliver-plan]').forEach(b=>b.onclick=()=>deliverPlanned(b.dataset.deliverPlan,b.dataset.planId));renderStats()}
-  async function deliverPlanned(qr,id){if(!requireAdminForDelivery())return;const c=getMachine(qr);if(!c)return alert('Chariot introuvable.');if(isDelivered(c))return;if(!confirm('Passer le chariot '+(c.chassis||qr)+' directement au statut « Livré » ?'))return;const now=new Date(),deliveryDate=localDateISO(now),updatedAt=now.toISOString();const {error}=await supabaseClient.from('chariots').update({status:'Livré',delivery_date:deliveryDate,updated_at:updatedAt}).eq('qr_id',qr);if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await supabaseClient.from('maintenance').insert({qr_id:qr,date:deliveryDate,technicien:currentUser.email,type:'Statut',travaux:`Statut : ${c.status||'—'} → Livré`,created_by:currentUser.id})}catch(e){console.warn('Notification livraison non enregistrée',e)}c.status='Livré';c.delivery_date=deliveryDate;c.updated_at=updatedAt;plans=plans.filter(p=>String(p.id)!==String(id));cacheDeliveryPlans(plans);renderWeek();renderList();alert('Chariot '+(c.chassis||qr)+' passé au statut « Livré ».')}
+  function renderWeek(){const dates=Array.from({length:7},(_,i)=>addDays(weekStart,i));els.range.textContent=`Semaine du ${dates[0].toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})} au ${dates[6].toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}`;els.week.innerHTML=dates.map(d=>{const iso=localDateISO(d);const dayPlans=plans.filter(p=>p.date===iso);const n=dayPlans.length;const delivered=dayPlans.filter(p=>isDelivered(getMachine(p.qr))).length;return `<button type="button" class="delivery-day ${iso===selectedDate?'active':''}" data-date="${iso}"><div class="dow">${esc(d.toLocaleDateString('fr-FR',{weekday:'long'}))}</div><div class="date">${esc(d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}))}</div><div class="num">${n} livraison${n!==1?'s':''}</div><div class="delivered-num">${delivered} chariot${delivered!==1?'s':''} livré${delivered!==1?'s':''}</div></button>`}).join('');els.week.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{selectedDate=b.dataset.date;renderWeek();renderList()})}
+  function renderList(){let rows=plans.filter(p=>p.date===selectedDate).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));els.list.innerHTML=rows.length?rows.map(p=>{const c=getMachine(p.qr);const href='chariot.html?id='+encodeURIComponent(p.qr||'');return `<div class="delivery-row"><div class="delivery-time">${esc(p.time||'—')}</div><div class="delivery-main"><a class="delivery-chariot-link" href="${href}"><div class="delivery-title">${esc(c?.chassis||p.qr||'Chariot')}</div></a><div class="delivery-meta">${esc(c?.engine||'—')} · ${esc(fmtCapacity(c?.capacity))} · ${esc(c?.client||'Sans client')}</div>${p.driver?`<div class="delivery-meta"><strong>Chauffeur :</strong> ${esc(p.driver)}</div>`:''}${p.destination?`<div class="delivery-meta"><strong>Destination :</strong> ${esc(p.destination)}</div>`:''}${p.note?`<div class="delivery-meta">${esc(p.note)}</div>`:''}</div><div class="delivery-actions">${isAdmin()&&!isDelivered(c)?`<button class="btn deliver-plan-btn" type="button" data-deliver-plan="${esc(p.qr)}" data-plan-id="${esc(p.id)}">Livrer</button>`:''}<button class="btn light" type="button" data-edit="${esc(p.id)}">Modifier</button><button class="btn light" type="button" data-delete="${esc(p.id)}">Supprimer</button></div></div>`}).join(''):`<div class="delivery-empty">Aucune livraison planifiée pour ${esc(formatLong(selectedDate))}.</div>`;els.list.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEdit(b.dataset.edit));els.list.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removePlan(b.dataset.delete));els.list.querySelectorAll('[data-deliver-plan]').forEach(b=>b.onclick=()=>deliverPlanned(b.dataset.deliverPlan,b.dataset.planId));renderStats()}
+  async function deliverPlanned(qr,id){if(!requireAdminForDelivery())return;const c=getMachine(qr);if(!c)return alert('Chariot introuvable.');if(isDelivered(c))return;if(!confirm('Passer le chariot '+(c.chassis||qr)+' directement au statut « Livré » ?'))return;const now=new Date(),deliveryDate=localDateISO(now),updatedAt=now.toISOString();const {error}=await supabaseClient.from('chariots').update({status:'Livré',delivery_date:deliveryDate,updated_at:updatedAt}).eq('qr_id',qr);if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await supabaseClient.from('maintenance').insert({qr_id:qr,date:deliveryDate,technicien:currentUser.email,type:'Statut',travaux:`Statut : ${c.status||'—'} → Livré`,created_by:currentUser.id})}catch(e){console.warn('Notification livraison non enregistrée',e)}c.status='Livré';c.delivery_date=deliveryDate;c.updated_at=updatedAt;cacheDeliveryPlans(plans);renderWeek();renderList();alert('Chariot '+(c.chassis||qr)+' passé au statut « Livré ».')}
   function fillDeliverySuggestions(){const drivers=[...new Set(plans.map(p=>String(p.driver||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));const destinations=[...new Set(plans.map(p=>String(p.destination||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));if(els.driverOptions)els.driverOptions.innerHTML=drivers.map(v=>`<option value="${esc(v)}"></option>`).join('');if(els.destinationOptions)els.destinationOptions.innerHTML=destinations.map(v=>`<option value="${esc(v)}"></option>`).join('')}
   function updateNoteCount(){if(els.noteCount&&els.note)els.noteCount.textContent=`${els.note.value.length}/200`}
   function setSelectValue(select,value,labelPrefix=''){
@@ -740,9 +885,6 @@ async function renderUpcomingDeliveriesFromPlanning(){
   let cancelRows=[];
   let serverLoaded=false;
 
-  // Use the same source as Planning des livraisons: maintenance events.
-  // Query the two event types separately for maximum compatibility with
-  // existing Supabase/RLS configurations.
   try{
     const [plannedRes,cancelRes]=await Promise.all([
       withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,type,travaux,created_at,created_by').eq('type','Planification livraison').order('created_at',{ascending:true}).limit(1000),7000),
@@ -770,7 +912,6 @@ async function renderUpcomingDeliveriesFromPlanning(){
     plans.push(payload);
   }
 
-  // Fallback to the shared cache only when the live planning read failed.
   if(!serverLoaded){
     const cached=readCachedDeliveryPlans();
     plans=Array.isArray(cached)?cached.filter(p=>p&&p.qr&&p.date):[];
@@ -778,28 +919,45 @@ async function renderUpcomingDeliveriesFromPlanning(){
     cacheDeliveryPlans(plans);
   }
 
+  const getMachine=(qr)=>CHARIOTS.find(x=>String(x.qr_id)===String(qr));
   const upcoming=plans
-    .filter(p=>String(p.date)>=today)
+    .filter(p=>String(p.date)>=today&&!isDelivered(getMachine(p.qr)))
     .sort((a,b)=>String(a.date+' '+(a.time||'99:99')).localeCompare(String(b.date+' '+(b.time||'99:99'))));
 
   const planned=document.getElementById('plannedKpi');
   if(planned)planned.textContent=String(upcoming.length);
 
-  const el=document.getElementById('upcomingDeliveries');
+  const el=document.getElementById('dashboardUpcomingTimeline');
   if(!el)return;
 
-  const rows=upcoming.slice(0,5);
+  const rows=upcoming.slice(0,4);
   if(!rows.length){
     el.innerHTML='<div class="dash-empty">Aucune livraison à venir dans le planning.</div>';
     return;
   }
 
-  el.innerHTML=`<table><thead><tr><th>Date</th><th>Client</th><th>Destination</th><th>Chariot</th><th>Chauffeur</th></tr></thead><tbody>${rows.map(p=>{
-    const c=CHARIOTS.find(x=>String(x.qr_id)===String(p.qr));
-    const dateObj=parseLocalDate(p.date);
-    const dateText=dateObj.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
-    return `<tr><td><span class="upcoming-badge">${esc(dateText)}${p.time?' · '+esc(p.time):''}</span></td><td>${esc(c?.client||'Sans client')}</td><td>${esc(p.destination||'—')}</td><td>${esc(c?.chassis||c?.qr_id||p.qr)}</td><td>${esc(p.driver||'—')}</td></tr>`;
-  }).join('')}</tbody></table>`;
+  const todayObj=parseLocalDate(today);
+  const tomorrowObj=parseLocalDate(today); tomorrowObj.setDate(tomorrowObj.getDate()+1);
+  const dayLabel=(iso)=>{
+    const d=parseLocalDate(iso);
+    if(d.getTime()===todayObj.getTime())return "Aujourd'hui";
+    if(d.getTime()===tomorrowObj.getTime())return 'Demain';
+    return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}).replace('.', '');
+  };
+
+  el.innerHTML=rows.map((p,index)=>{
+    const c=getMachine(p.qr);
+    const chassis=c?.chassis||c?.qr_id||p.qr;
+    const time=String(p.time||'').trim()||'—';
+    const destination=String(p.destination||'').trim()||'Destination non définie';
+    const client=String(c?.client||'').trim();
+    return `<a class="timeline-item" href="chariot.html?id=${encodeURIComponent(p.qr)}">\
+      <div class="timeline-date"><strong>${esc(time)}</strong><span>${esc(dayLabel(p.date))}</span></div>\
+      <div class="timeline-track"><span class="timeline-dot ${index===0?'active':''}"></span>${index<rows.length-1?'<span class="timeline-line"></span>':''}</div>\
+      <div class="timeline-main"><div class="timeline-title">${esc(chassis)}</div><div class="timeline-meta">${esc(destination)}${client?' · '+esc(client):''}</div></div>\
+      <span class="timeline-status">Prévu</span>\
+    </a>`;
+  }).join('');
 }
 
 // Kept as a compatibility wrapper for older code paths.
