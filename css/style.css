@@ -1412,3 +1412,11 @@ body.dashboard-page.sidebar-collapsed .professional-dashboard .pro-site-footer{m
   .professional-dashboard .timeline-title{font-size:11.5px}
   .professional-dashboard .quick-actions{grid-template-columns:1fr}
 }
+
+
+/* Global button text alignment */
+button, .btn, a.btn { text-align: center; }
+.btn, button.btn, a.btn { display: inline-flex; align-items: center; justify-content: center; }
+button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot, .delivery-day, .delivery-search-result { text-align: center; }
+button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot { display: inline-flex; align-items: center; justify-content: center; }
+.user-menu a, .user-menu button { justify-content: center; text-align: center; }

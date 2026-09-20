@@ -338,3 +338,11 @@ body.notifications-page .notifications-footer{margin-left:233px!important;width:
   body.notifications-page .notification-page-row{grid-template-columns:40px minmax(0,1fr);padding:11px 12px}
   body.notifications-page .notification-page-icon{width:38px;height:38px}
 }
+
+
+/* Global button text alignment */
+button, .btn, a.btn { text-align: center; }
+.btn, button.btn, a.btn { display: inline-flex; align-items: center; justify-content: center; }
+button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot, .delivery-day, .delivery-search-result { text-align: center; }
+button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot { display: inline-flex; align-items: center; justify-content: center; }
+.user-menu a, .user-menu button { justify-content: center; text-align: center; }
