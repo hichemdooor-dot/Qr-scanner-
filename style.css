@@ -464,3 +464,162 @@ body.notifications-page .notification-arrow{font-size:24px;line-height:.8;margin
   body.notifications-page .notification-page-actor{font-size:12px;line-height:1.35;margin-top:4px}
   body.notifications-page .notification-page-row .view-chariot{grid-column:2;justify-self:start;min-width:138px;min-height:42px;padding:9px 13px;font-size:13.5px}
 }
+
+/* Notifications mobile final layout — compact and non-overlapping */
+@media (max-width: 800px) {
+  body.notifications-page .notifications-head {
+    position: relative;
+    display: block;
+    padding: 14px;
+  }
+
+  body.notifications-page .notifications-head-title {
+    width: 100%;
+    gap: 12px;
+    padding-right: 52px;
+    align-items: flex-start;
+  }
+
+  body.notifications-page .notifications-head-icon {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+  }
+
+  body.notifications-page .notifications-head-icon svg {
+    width: 25px;
+    height: 25px;
+  }
+
+  body.notifications-page .notifications-head h1 {
+    font-size: 23px;
+    line-height: 1.15;
+    margin: 1px 0 4px;
+  }
+
+  body.notifications-page .notifications-head p {
+    font-size: 12px;
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  body.notifications-page .notifications-head-actions {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 7px;
+    margin-top: 11px;
+  }
+
+  body.notifications-page .notifications-head-actions .notifications-count {
+    position: absolute;
+    top: 15px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    font-size: 13px;
+    z-index: 2;
+  }
+
+  body.notifications-page .notifications-head-actions .mark-all-read,
+  body.notifications-page .notifications-head-actions .back-link {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  body.notifications-page .notification-group-head {
+    padding: 12px 14px;
+  }
+
+  body.notifications-page .notification-group-head h2 {
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  body.notifications-page .notification-group-head h2 .notification-group-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  body.notifications-page .notification-group-head span {
+    min-width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  body.notifications-page .notification-page-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+    padding: 13px 14px;
+  }
+
+  body.notifications-page .notification-page-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  body.notifications-page .notification-page-title {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  body.notifications-page .notification-page-meta {
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 5px;
+  }
+
+  body.notifications-page .notification-page-actor {
+    font-size: 11.5px;
+    line-height: 1.35;
+    margin-top: 4px;
+  }
+
+  body.notifications-page .notification-page-row .view-chariot {
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+  }
+}
+
+@media (max-width: 430px) {
+  body.notifications-page .notifications-head {
+    padding: 13px;
+  }
+
+  body.notifications-page .notifications-head-title {
+    padding-right: 48px;
+  }
+
+  body.notifications-page .notifications-head h1 {
+    font-size: 22px;
+  }
+
+  body.notifications-page .notifications-head p {
+    font-size: 11.5px;
+  }
+
+  body.notifications-page .notifications-head-actions .notifications-count {
+    top: 14px;
+    right: 13px;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+
+  body.notifications-page .notification-page-title {
+    font-size: 15.5px;
+  }
+}
