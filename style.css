@@ -240,28 +240,44 @@ body.notifications-page .notifications-dash-sidebar .sidebar-promo img,body.noti
 body.notifications-page .notifications-dash-sidebar .sidebar-foot,body.notifications-page .mobile-notifications-sidebar .sidebar-foot{flex:0 0 auto;color:#7e93a6;text-align:left;padding:0 8px;font-size:9px;line-height:1.55}.notifications-page .sidebar-foot span{color:#5f768b}
 body.notifications-page .notifications-wrap{max-width:1280px;margin:0 auto;padding:0}
 body.notifications-page .notifications-head{background:#fff;border:1px solid #dbe6f0;border-radius:13px;box-shadow:0 4px 14px rgba(25,66,100,.06);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;padding:20px 22px}
-body.notifications-page .notifications-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-body.notifications-page .mark-all-read{border:1px solid #c9d9e7;background:#fff;border-radius:9px;padding:9px 13px;color:#087bf0;font-weight:800;cursor:pointer}
-body.notifications-page .mark-all-read:hover{background:#edf6ff;border-color:#9fcaf0}
+body.notifications-page .notifications-head h1{margin:0;color:#0e1930;font-size:29px;line-height:1.15;letter-spacing:-.02em}
+body.notifications-page .notifications-head p{margin:6px 0 0;color:#5f7791;font-size:14px}
+body.notifications-page .notifications-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+body.notifications-page .notifications-count{min-width:34px;height:34px;padding:0 9px;display:inline-grid;place-items:center;border-radius:999px;background:#ef3340;color:#fff;font-size:15px;font-weight:800}
+body.notifications-page .mark-all-read,body.notifications-page .back-link{min-height:42px;border:1px solid #c9d9e7;background:#fff;border-radius:9px;padding:10px 15px;color:#087bf0;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap}
+body.notifications-page .mark-all-read:hover,body.notifications-page .back-link:hover{background:#edf6ff;border-color:#9fcaf0}
 body.notifications-page .mark-all-read.disabled,body.notifications-page .mark-all-read:disabled{opacity:.5;cursor:default;background:#f5f8fb}
 body.notifications-page .page-card{background:#fff;border:1px solid #dbe6f0;border-radius:14px;box-shadow:0 4px 14px rgba(25,66,100,.06);overflow:hidden}
 body.notifications-page .notification-group{background:#fff}
-body.notifications-page .notification-group+.notification-group{border-top:12px solid #f4f8fc}
-body.notifications-page .notification-group-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#f7fafc;border-bottom:1px solid #dfe8f0}
-body.notifications-page .notification-group-head h2{margin:0;color:#102d50;font-size:16px;font-weight:800}
-body.notifications-page .notification-group-head span{min-width:24px;height:24px;padding:0 7px;display:grid;place-items:center;border-radius:999px;background:#e8f1f8;color:#16476e;font-size:11px;font-weight:800}
-body.notifications-page .notification-group-new .notification-group-head{background:#fff5f5}
+body.notifications-page .notification-group+.notification-group{border-top:10px solid #f4f8fc}
+body.notifications-page .notification-group-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;background:#f8fbfd;border-bottom:1px solid #dfe8f0}
+body.notifications-page .notification-group-head h2{margin:0;color:#102d50;font-size:18px;font-weight:800;display:flex;align-items:center;gap:9px}
+body.notifications-page .notification-group-head h2::before{display:none!important;content:none!important}
+body.notifications-page .notification-group-new .notification-group-head h2::before{display:none!important;content:none!important}
+body.notifications-page .notification-group-head span{min-width:28px;height:28px;padding:0 8px;display:grid;place-items:center;border-radius:999px;background:#e8f1f8;color:#16476e;font-size:13px;font-weight:800}
+body.notifications-page .notification-group-new .notification-group-head{background:#fff6f7}
 body.notifications-page .notification-group-new .notification-group-head span{background:#ef3340;color:#fff}
-body.notifications-page .notification-group-empty{padding:22px 20px;color:#71879b;font-size:12px}
-body.notifications-page .notification-page-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:14px;align-items:center;padding:16px 20px;border-bottom:1px solid #edf1f5;min-height:84px}
+body.notifications-page .notification-group-empty{padding:26px 20px;color:#71879b;font-size:14px}
+body.notifications-page .notification-page-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:15px;align-items:center;padding:14px 20px;border-bottom:1px solid #e7edf3;min-height:86px;transition:background .15s ease}
 body.notifications-page .notification-page-row:last-child{border-bottom:0}
-body.notifications-page .notification-page-row.is-new{background:#fff7f7}
+body.notifications-page .notification-page-row.is-new{background:#fffafa;box-shadow:inset 3px 0 0 #ef3340}
 body.notifications-page .notification-page-row.is-old{background:#fff}
-body.notifications-page .notification-page-icon{width:48px;height:48px;border-radius:50%;background:#edf3f8;color:#18385b;display:grid;place-items:center;font-size:22px}
-body.notifications-page .notification-page-title{font-size:15px;font-weight:800;color:#102d50;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-body.notifications-page .notification-page-meta{margin-top:5px;font-size:12px;color:#627b94}
-body.notifications-page .notification-page-row .new-badge{display:inline-flex;background:#ef3340;color:#fff;padding:6px 10px;border-radius:999px;font-size:12px}
-body.notifications-page .notification-page-row .view-chariot{border:0;background:#087bf0;color:#fff;border-radius:8px;padding:11px 15px;font-weight:800;cursor:pointer;white-space:nowrap}
+body.notifications-page .notification-page-row:hover{background:#f8fbff}
+body.notifications-page .notification-page-icon{width:48px;height:48px;border-radius:50%;background:#edf3f8;color:#087bf0;display:grid;place-items:center;font-size:0;box-shadow:inset 0 0 0 1px rgba(8,123,240,.06)}
+body.notifications-page .notification-page-icon svg{width:23px;height:23px;display:block;stroke:currentColor}
+body.notifications-page .notification-page-body{min-width:0}
+body.notifications-page .notification-page-title{font-size:17px;line-height:1.25;font-weight:800;color:#102d50;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+body.notifications-page .notification-page-meta{margin-top:5px;font-size:13px;line-height:1.4;color:#627b94}
+body.notifications-page .notification-page-actor{margin-top:4px;font-size:12px;line-height:1.35;color:#627b94}
+body.notifications-page .notification-page-actor span{font-weight:800;color:#244a6e}
+body.notifications-page .notification-page-row .new-badge{display:inline-flex;align-items:center;justify-content:center;background:#ef3340;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;line-height:1;font-weight:800}
+body.notifications-page .notification-page-row .view-chariot{min-width:142px;min-height:42px;border:0;background:#087bf0;color:#fff;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 5px 12px rgba(8,123,240,.15)}
+body.notifications-page .notification-page-row .view-chariot:hover{background:#056ed8}
+body.notifications-page .notification-page-row.is-new .notification-page-icon{background:#eaf4ff;color:#087bf0}
+body.notifications-page .notification-page-row.is-new:nth-child(odd) .notification-page-icon{background:#e8f6ff}
+body.notifications-page .notification-page-icon[data-kind="edit"]{background:#eafaf1;color:#15985b}
+body.notifications-page .notification-page-icon[data-kind="cancel"]{background:#fff3e0;color:#dc7600}
+body.notifications-page .notification-page-icon[data-kind="delivered"]{background:#eaf8ef;color:#15985b}
 body.notifications-page .mobile-notifications-sidebar{display:none}
 body.notifications-page .notifications-footer{margin-left:233px!important;width:calc(100% - 233px);}
 @media(max-width:1100px) and (min-width:801px){body.notifications-page .notifications-dash-sidebar{width:220px;flex-basis:220px}body.notifications-page .notifications-main{margin-left:220px}body.notifications-page .notifications-footer{margin-left:220px!important;width:calc(100% - 220px)}}
@@ -346,3 +362,105 @@ button, .btn, a.btn { text-align: center; }
 button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot, .delivery-day, .delivery-search-result { text-align: center; }
 button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .view-chariot { display: inline-flex; align-items: center; justify-content: center; }
 .user-menu a, .user-menu button { justify-content: center; text-align: center; }
+
+/* V64.0 — notifications organization / visual cleanup */
+body.notifications-page .notifications-head{padding:17px 20px;gap:16px}
+body.notifications-page .notifications-head>div:first-child{min-width:0}
+body.notifications-page .notifications-head h1{font-size:25px;line-height:1.15;margin:0 0 4px}
+body.notifications-page .notifications-head p{margin:0;font-size:12px;color:#627b94}
+body.notifications-page .notifications-head-actions{gap:8px;flex-wrap:nowrap}
+body.notifications-page .notifications-count{min-width:31px;height:31px;padding:0 9px;background:#ef3340;color:#fff;border-radius:999px;font-weight:800;font-size:12px;display:grid;place-items:center}
+body.notifications-page .mark-all-read,body.notifications-page .back-link{min-height:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+body.notifications-page .page-card{overflow:hidden}
+body.notifications-page .notification-group+.notification-group{border-top:8px solid #f4f8fc}
+body.notifications-page .notification-group-head{padding:12px 18px;background:#f8fbfd}
+body.notifications-page .notification-group-new .notification-group-head{background:#fff8f8;border-bottom-color:#f2d7d9}
+body.notifications-page .notification-group-head h2{font-size:15px}
+body.notifications-page .notification-group-head span{min-width:23px;height:23px;font-size:10px}
+body.notifications-page .notification-page-row{grid-template-columns:44px minmax(0,1fr) 126px;gap:13px;align-items:center;padding:12px 16px;min-height:76px;background:#fff;border-bottom:1px solid #e9eff4;transition:background .15s ease}
+body.notifications-page .notification-page-row:hover{background:#f8fbfe}
+body.notifications-page .notification-page-row.is-new{background:#fffafa;box-shadow:inset 3px 0 0 #ef3340}
+body.notifications-page .notification-page-row.is-new:hover{background:#fff6f7}
+body.notifications-page .notification-page-row.is-old{box-shadow:inset 3px 0 0 #d8e2eb}
+body.notifications-page .notification-page-icon{width:40px;height:40px;font-size:18px;background:#edf3f8;color:#18385b}
+body.notifications-page .notification-page-body{min-width:0}
+body.notifications-page .notification-page-title{font-size:14px;line-height:1.25;gap:7px}
+body.notifications-page .notification-page-meta{margin-top:4px;font-size:11px;line-height:1.35;color:#657f97;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.notifications-page .notification-page-row .new-badge{padding:4px 7px;border-radius:999px;font-size:9px;line-height:1;font-weight:800}
+body.notifications-page .notification-page-row .view-chariot{width:126px;min-height:38px;padding:8px 10px;border-radius:8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+body.notifications-page .notification-group-old .notification-page-row .view-chariot{background:#f2f6f9;color:#0b6fd3;border:1px solid #d9e5ee}
+body.notifications-page .notification-group-old .notification-page-row .view-chariot:hover{background:#eaf3fa}
+@media(max-width:900px) and (min-width:801px){
+  body.notifications-page .notifications-head-actions{flex-wrap:wrap}
+  body.notifications-page .notification-page-row{grid-template-columns:44px minmax(0,1fr) 110px}
+  body.notifications-page .notification-page-row .view-chariot{width:110px}
+}
+@media(max-width:800px){
+  body.notifications-page .notifications-head{padding:13px;gap:9px}
+  body.notifications-page .notifications-head h1{font-size:21px}
+  body.notifications-page .notifications-head p{font-size:11px}
+  body.notifications-page .notifications-head-actions{display:grid;grid-template-columns:auto 1fr;gap:7px;width:100%;align-items:stretch}
+  body.notifications-page .notifications-count{height:40px;min-width:40px}
+  body.notifications-page .mark-all-read{width:100%;min-height:40px}
+  body.notifications-page .back-link{grid-column:1 / -1;width:100%;min-height:40px}
+  body.notifications-page .notification-group-head{padding:11px 13px}
+  body.notifications-page .notification-page-row{grid-template-columns:40px minmax(0,1fr);gap:9px;padding:11px 13px;min-height:0}
+  body.notifications-page .notification-page-icon{width:38px;height:38px;font-size:17px}
+  body.notifications-page .notification-page-title{font-size:13px}
+  body.notifications-page .notification-page-meta{font-size:10px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  body.notifications-page .notification-page-row .view-chariot{grid-column:2;width:100%;min-height:38px;padding:8px 10px}
+}
+
+/* NOTIFICATIONS — actor/user attribution */
+body.notifications-page .notification-page-actor{
+  margin-top:4px;
+  font-size:10px;
+  line-height:1.25;
+  color:#71879b;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+body.notifications-page .notification-page-actor span{
+  font-weight:800;
+  color:#4e6882;
+}
+@media(max-width:800px){
+  body.notifications-page .notification-page-actor{font-size:10px;}
+}
+
+
+body.notifications-page .notifications-head-title{display:flex;align-items:center;gap:14px;min-width:0}
+body.notifications-page .notifications-head-icon{width:50px;height:50px;flex:0 0 50px;border-radius:50%;background:#eaf4ff;color:#087bf0;display:grid;place-items:center}
+body.notifications-page .notifications-head-icon svg{width:28px;height:28px}
+
+/* Notifications visual polish — match the approved preview */
+body.notifications-page .notification-group-head h2 .notification-group-icon{width:32px;height:32px;border-radius:50%;display:inline-grid;place-items:center;flex:0 0 32px}
+body.notifications-page .notification-group-icon svg{width:19px;height:19px;display:block}
+body.notifications-page .notification-group-icon.new-icon{background:#eaf4ff;color:#087bf0}
+body.notifications-page .notification-group-icon.old-icon{background:#eef4f8;color:#5d748b}
+body.notifications-page .notification-page-icon[data-kind="delivery"]{background:#eaf4ff;color:#087bf0}
+body.notifications-page .notification-page-icon[data-kind="edit"]{background:#e9f8ef;color:#13935a}
+body.notifications-page .notification-page-icon[data-kind="delivered"]{background:#eaf8ef;color:#15985b}
+body.notifications-page .notification-page-icon[data-kind="cancel"]{background:#fff0df;color:#d87400}
+body.notifications-page .notification-page-title{font-size:18px}
+body.notifications-page .notification-page-meta{font-size:13.5px}
+body.notifications-page .notification-page-actor{font-size:12.5px}
+body.notifications-page .notification-page-row .new-badge{font-size:11px;padding:5px 9px}
+body.notifications-page .notification-page-row .view-chariot{font-size:14px;min-width:145px;min-height:44px;gap:10px}
+body.notifications-page .notification-arrow{font-size:24px;line-height:.8;margin-top:-1px}
+@media(max-width:800px){
+  body.notifications-page .notifications-head h1{font-size:24px}
+  body.notifications-page .notifications-head p{font-size:13px}
+  body.notifications-page .mark-all-read,body.notifications-page .back-link{font-size:13px;min-height:42px}
+  body.notifications-page .notification-group-head{padding:13px 14px}
+  body.notifications-page .notification-group-head h2{font-size:17px}
+  body.notifications-page .notification-group-head h2 .notification-group-icon{width:30px;height:30px;flex-basis:30px}
+  body.notifications-page .notification-page-row{grid-template-columns:48px minmax(0,1fr);gap:11px;padding:14px 14px;min-height:0}
+  body.notifications-page .notification-page-icon{width:46px;height:46px}
+  body.notifications-page .notification-page-icon svg{width:21px;height:21px}
+  body.notifications-page .notification-page-title{font-size:16px;line-height:1.25}
+  body.notifications-page .notification-page-meta{font-size:12.5px;line-height:1.4;margin-top:5px}
+  body.notifications-page .notification-page-actor{font-size:12px;line-height:1.35;margin-top:4px}
+  body.notifications-page .notification-page-row .view-chariot{grid-column:2;justify-self:start;min-width:138px;min-height:42px;padding:9px 13px;font-size:13.5px}
+}
