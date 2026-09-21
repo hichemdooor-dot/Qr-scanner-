@@ -64,6 +64,36 @@ async function enforceMaintenance(){
 
 let CHARIOTS=[],currentUser=null,current=null,editingQrId=null,licenseValid=false,DELIVERY_PLANS=[];
 const DELIVERY_PLAN_KEY='sbi_delivery_plans_v1',DELIVERY_PLAN_TYPES=['Planification livraison','Annulation planification livraison'];
+
+// Real-time synchronization layer. Pages can subscribe to database changes while
+// keeping their existing polling fallback. If Realtime is not enabled in Supabase,
+// the subscription fails gracefully and the normal refresh logic continues.
+let SBI_REALTIME_CHANNELS=[];
+function startSbiRealtime(onChange, tables=['chariots','maintenance']){
+  if(!supabaseClient?.channel||typeof onChange!=='function')return null;
+  const channelName='sbi-live-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+  let channel=supabaseClient.channel(channelName);
+  tables.forEach(table=>{
+    channel=channel.on('postgres_changes',{event:'*',schema:'public',table},payload=>{
+      try{onChange({table,event:payload?.eventType||'*',payload})}catch(e){console.warn('SBI realtime callback',e)}
+    });
+  });
+  channel.subscribe(status=>{
+    if(status==='SUBSCRIBED')console.info('SBI Realtime connecté');
+    if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('SBI Realtime indisponible, actualisation de secours conservée.');
+  });
+  SBI_REALTIME_CHANNELS.push(channel);
+  return channel;
+}
+function stopSbiRealtime(channel){
+  if(!channel||!supabaseClient?.removeChannel)return;
+  try{supabaseClient.removeChannel(channel)}catch(e){}
+  SBI_REALTIME_CHANNELS=SBI_REALTIME_CHANNELS.filter(c=>c!==channel);
+}
+window.addEventListener('beforeunload',()=>{
+  SBI_REALTIME_CHANNELS.forEach(channel=>{try{supabaseClient.removeChannel(channel)}catch(e){}});
+  SBI_REALTIME_CHANNELS=[];
+});
 const $=s=>document.querySelector(s); const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('TIMEOUT')),ms))]);
 const norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
@@ -460,7 +490,94 @@ function formatPlannedDate(iso){if(!iso)return '—';try{return parseLocalDate(i
 function parseLocalDate(iso){const [y,m,d]=String(iso).split('-').map(Number);return new Date(y||2000,(m||1)-1,d||1)}
 function localISODateGlobal(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 function isStock(c){return normalizeStatus(c.status)==='en stock'&&!String(c.client||'').trim()}
-function card(c){const id=String(c.qr_id||'');const delivered=isDelivered(c);const canDeliver=isAdmin()&&!delivered;const href='chariot.html?id='+encodeURIComponent(id);return `<div class="item"><a class="item-open-link" href="${href}" aria-label="Ouvrir le chariot ${esc(id)}"></a><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${canDeliver?`<button class="btn delivered-action" onclick="event.stopPropagation();markDelivered('${esc(id)}')">Livrer</button>`:''}</div>`}
+function card(c){
+  const id=String(c.qr_id||'');
+  const delivered=isDelivered(c);
+  const canDeliver=isAdmin()&&!delivered;
+  const href='chariot.html?id='+encodeURIComponent(id);
+  const st=normalizeStatus(c.status);
+  const planned=!!getDeliveryPlan(id);
+  let action='';
+  if(st==='en stock') action=`<button class="btn light card-action" type="button" data-card-action="assign" data-qr="${esc(id)}">Affecter client</button>`;
+  else if(st==='reserve') action=planned?`<button class="btn light card-action" type="button" data-card-action="prepare" data-qr="${esc(id)}">Préparation</button>`:`<button class="btn light card-action" type="button" data-card-action="plan" data-qr="${esc(id)}">Planifier</button>`;
+  else if(st==='preparation livraison') action=`<button class="btn light card-action" type="button" data-card-action="ready" data-qr="${esc(id)}">Prêt à livrer</button>`;
+  else if(st==='pret a livrer' && canDeliver) action=`<button class="btn delivered-action card-action" type="button" data-card-action="deliver" data-qr="${esc(id)}">Livrer</button>`;
+  return `<div class="item interactive-card" data-card-id="${esc(id)}"><a class="item-open-link" href="${href}" aria-label="Ouvrir le chariot ${esc(id)}"></a><div class="item-main"><div class="item-title">${esc(id)}</div><div class="meta">${esc(c.chassis||'—')} • ${esc(c.engine||'—')} • ${esc(fmtCapacity(c.capacity))}</div>${c.client?`<div class="client-line"><strong>Client :</strong> ${esc(c.client)}</div>`:''}<div class="recent-time">${c.updated_at?'Mis à jour : '+new Date(c.updated_at).toLocaleString('fr-FR'):''}</div></div><span class="badge ${statusClass(c.status)}">${esc(c.status||c.stock||'—')}</span>${action}</div>`;
+}
+function initInteractiveCards(){
+  if(window.__sbiInteractiveCardsBound)return;
+  window.__sbiInteractiveCardsBound=true;
+  document.addEventListener('click',async e=>{
+    const btn=e.target.closest?.('[data-card-action]');
+    if(!btn)return;
+    e.preventDefault();e.stopPropagation();
+    if(btn.dataset.busy==='1')return;
+    const id=btn.dataset.qr,action=btn.dataset.cardAction;
+    const c=CHARIOTS.find(x=>String(x.qr_id)===String(id));
+    if(!c)return;
+    if(action==='assign'){location.href='nouveau-chariot.html?id='+encodeURIComponent(id);return}
+    if(action==='plan'){location.href='planning-livraisons.html?qr='+encodeURIComponent(id);return}
+    const next=action==='prepare'?'Préparation livraison':action==='ready'?'Prêt à livrer':action==='deliver'?'Livré':'';
+    if(!next)return;
+    if(!confirm(`Passer ${c.chassis||id} au statut « ${next} » ?`))return;
+    btn.dataset.busy='1';btn.disabled=true;const original=btn.textContent;btn.textContent='...';
+    try{
+      const ok=await transitionChariotStatus(id,next);
+      if(ok){
+        toastCardUpdate(id,next);
+        const page=location.pathname.split('/').pop();
+        if(page==='chariots.html') await chariotsPage();
+        else if(page==='stock.html') await stockPage();
+        else if(page==='livres.html') await deliveredPage();
+      }
+    }catch(err){console.error('Action chariot',err);alert('Erreur : '+friendlySupabaseError(err));}
+    finally{btn.dataset.busy='0';btn.disabled=false;btn.textContent=original;}
+  },true);
+}
+function toastCardUpdate(id,status){
+  let box=document.getElementById('cardActionToast');
+  if(!box){box=document.createElement('div');box.id='cardActionToast';box.className='card-action-toast';document.body.appendChild(box)}
+  box.textContent=`${id} — ${status}`;box.classList.add('show');clearTimeout(window.__cardToastTimer);window.__cardToastTimer=setTimeout(()=>box.classList.remove('show'),2200);
+}
+initInteractiveCards();
+function initDashboardGlobalSearch(){
+  const input=document.getElementById('dashboardSearch'),box=document.getElementById('dashboardSearchResults');
+  if(!input||!box||input.dataset.searchReady==='1')return;
+  input.dataset.searchReady='1';
+  let activeIndex=-1;
+  const close=()=>{box.classList.remove('open');input.setAttribute('aria-expanded','false');activeIndex=-1};
+  const fields=(c)=>[c?.qr_id,c?.chassis,c?.engine,c?.engine_number,c?.client,c?.capacity,c?.status,c?.serial_number].map(v=>String(v||'').trim()).filter(Boolean);
+  const matches=(q)=>{
+    const n=norm(q);
+    if(!n)return[];
+    return [...CHARIOTS].map((c,idx)=>({c,idx,score:(()=>{
+      const vals=fields(c).map(norm), chassis=norm(c?.chassis||''), qr=norm(c?.qr_id||''), client=norm(c?.client||'');
+      if(qr===n||chassis===n)return 0;
+      if(qr.startsWith(n)||chassis.startsWith(n))return 1;
+      if(client.startsWith(n))return 2;
+      if(vals.some(v=>v.startsWith(n)))return 3;
+      if(vals.some(v=>v.includes(n)))return 4;
+      return 99;
+    })()})).filter(x=>x.score<99).sort((a,b)=>a.score-b.score||a.idx-b.idx).slice(0,8);
+  };
+  const open=()=>{
+    const q=input.value.trim();
+    if(!q){close();return}
+    const rows=matches(q);
+    activeIndex=rows.length?0:-1;
+    if(!rows.length){box.innerHTML='<div class="dashboard-search-empty">Aucun chariot correspondant.</div>';box.classList.add('open');input.setAttribute('aria-expanded','true');return}
+    box.innerHTML=rows.map((x,i)=>{const c=x.c;const title=c.chassis||c.qr_id||'Chariot';const meta=[c.qr_id,c.engine,c.capacity,c.client].filter(Boolean).join(' · ');return `<button type="button" class="dashboard-search-result ${i===activeIndex?'is-active':''}" role="option" aria-selected="${i===activeIndex?'true':'false'}" data-qr="${esc(c.qr_id||'')}"><span class="dashboard-search-result-icon">${esc(String(title).slice(0,2).toUpperCase())}</span><span class="dashboard-search-result-main"><span class="dashboard-search-result-title">${esc(title)}</span><span class="dashboard-search-result-meta">${esc(meta||'Ouvrir la fiche du chariot')}</span></span></button>`}).join('')+`<div class="dashboard-search-footer"><span>${rows.length} résultat${rows.length>1?'s':''} affiché${rows.length>1?'s':''}</span><button type="button" id="dashboardSearchAll">Voir tous les résultats →</button></div>`;
+    box.classList.add('open');input.setAttribute('aria-expanded','true');
+    box.querySelectorAll('.dashboard-search-result').forEach((btn)=>btn.addEventListener('click',()=>{const qr=btn.dataset.qr;if(qr)location.href='chariot.html?id='+encodeURIComponent(qr)}));
+    box.querySelector('#dashboardSearchAll')?.addEventListener('click',()=>dashboardGlobalSearch());
+  };
+  const highlight=()=>{box.querySelectorAll('.dashboard-search-result').forEach((el,i)=>{const on=i===activeIndex;el.classList.toggle('is-active',on);el.setAttribute('aria-selected',on?'true':'false');if(on)el.scrollIntoView({block:'nearest'})})};
+  input.addEventListener('input',open);
+  input.addEventListener('keydown',(e)=>{if(e.key==='ArrowDown'){e.preventDefault();if(!box.classList.contains('open'))open();const n=box.querySelectorAll('.dashboard-search-result').length;if(n){activeIndex=(activeIndex+1)%n;highlight()}}else if(e.key==='ArrowUp'){e.preventDefault();const n=box.querySelectorAll('.dashboard-search-result').length;if(n){activeIndex=(activeIndex-1+n)%n;highlight()}}else if(e.key==='Enter'){const btn=box.querySelectorAll('.dashboard-search-result')[activeIndex];if(btn){e.preventDefault();btn.click()}}else if(e.key==='Escape'){e.preventDefault();close()}});
+  document.addEventListener('click',(e)=>{if(!e.target.closest('.dashboard-search-shell'))close()});
+  window.__openDashboardSearch=open;
+}
+
 async function dashboardPage(){
   if(!await session())return;
   renderConnectedUser();
@@ -507,6 +624,44 @@ async function dashboardPage(){
     console.warn('Activité dashboard',e);
     if($('#activityList'))$('#activityList').innerHTML='<div class="dash-empty">Aucune activité récente.</div>';
   }
+  // Live dashboard synchronization: refresh counters/activity/notifications
+  // when another connected user changes the fleet or planning.
+  const dashboardRealtime=startSbiRealtime(async ({table,event,payload})=>{
+    if(document.visibilityState==='hidden')return;
+    const remoteUserId=String(payload?.new?.created_by||payload?.old?.created_by||'');
+    const isRemote=!currentUser?.id||!remoteUserId||remoteUserId!==String(currentUser.id);
+    if(table==='maintenance'){
+      try{await loadDashboardNotifications();}
+      catch(e){console.warn('Actualisation notifications dashboard',e)}
+      if(isRemote&&event==='INSERT'){
+        const item=payload?.new;
+        if(item?.qr_id){
+          const c=CHARIOTS.find(v=>String(v.qr_id)===String(item.qr_id));
+          const ev=formatMaintenanceEvent(item,c);
+          const actor=notificationActorName(item);
+          let box=document.getElementById('dashboardLiveToast');
+          if(!box){box=document.createElement('div');box.id='dashboardLiveToast';box.className='card-action-toast';document.body.appendChild(box)}
+          box.textContent=`${ev.title} · ${actor}`;box.classList.add('show');
+          clearTimeout(window.__dashboardLiveToastTimer);window.__dashboardLiveToastTimer=setTimeout(()=>box.classList.remove('show'),4000);
+        }
+      }
+    }
+    if(table==='chariots'){
+      try{await loadChariots();
+        if($('#stock'))$('#stock').textContent=CHARIOTS.filter(isStock).length;
+        if($('#delivered'))$('#delivered').textContent=CHARIOTS.filter(isDelivered).length;
+        renderDashboardLatest();
+      }catch(e){console.warn('Actualisation chariots dashboard',e)}
+    }
+  },['maintenance','chariots']);
+  window.__SBI_DASHBOARD_REALTIME=dashboardRealtime;
+  window.clearInterval(window.__SBI_DASHBOARD_NOTIF_TIMER);
+  window.__SBI_DASHBOARD_NOTIF_TIMER=setInterval(async()=>{
+    if(document.visibilityState==='hidden')return;
+    try{await loadDashboardNotifications();}catch(_){}
+  },30000);
+  initDashboardInteractivity();
+  initDashboardGlobalSearch();
 }
 function renderDashboardWatch(){
   const set=(id,value)=>{const el=$('#'+id);if(el)el.textContent=String(value)};
@@ -596,6 +751,7 @@ async function loadDashboardNotifications(){
     if(type.includes('demande changement mot de passe'))return false;
     return true;
   }).slice(0,6);
+  window.__SBI_DASHBOARD_NOTIFICATIONS=rows;
   const unread=rows.filter(x=>!localStorage.getItem('sbi_notif_read_'+x.id)).length;
   const bell=$('#notificationCount'); if(bell) bell.textContent=unread>99?'99+':String(unread);
   const titleCount=$('#notificationCountTitle'); if(titleCount) titleCount.textContent=String(unread);
@@ -619,6 +775,37 @@ async function loadDashboardNotifications(){
   }).join(''):'<div class="dash-empty">Aucune activité.</div>';
 }
 function relativeTime(iso){const ms=Date.now()-new Date(iso).getTime(),m=Math.max(0,Math.floor(ms/60000));if(m<1)return'À l’instant';if(m<60)return`Il y a ${m} min`;const h=Math.floor(m/60);if(h<24)return`Il y a ${h} h`;const d=Math.floor(h/24);return`Il y a ${d} j`}
+function initDashboardInteractivity(){
+  document.querySelectorAll('.dashboard-kpi-link[data-dashboard-target]').forEach(card=>{
+    if(card.dataset.bound==='1')return;
+    card.dataset.bound='1';
+    const go=()=>{const target=card.dataset.dashboardTarget;if(target)location.href=target};
+    card.addEventListener('click',go);
+    card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}});
+  });
+  const bell=document.getElementById('dashboardNotificationBell');
+  const panel=document.getElementById('dashboardNotificationPanel');
+  const list=document.getElementById('dashboardNotificationList');
+  if(!bell||!panel||!list||bell.dataset.bound==='1')return;
+  bell.dataset.bound='1';
+  const render=()=>{
+    const rows=Array.isArray(window.__SBI_DASHBOARD_NOTIFICATIONS)?window.__SBI_DASHBOARD_NOTIFICATIONS:[];
+    if(!rows.length){list.innerHTML='<div class="dash-empty">Aucune notification récente.</div>';return}
+    list.innerHTML=rows.slice(0,5).map(x=>{
+      const c=CHARIOTS.find(v=>String(v.qr_id)===String(x.qr_id));
+      const ev=formatMaintenanceEvent(x,c);
+      const read=localStorage.getItem('sbi_notif_read_'+x.id)==='1';
+      const href=x.qr_id?'chariot.html?id='+encodeURIComponent(x.qr_id):'historique.html';
+      const actor=String(x.technicien||x.created_by||'Utilisateur').trim()||'Utilisateur';
+      return `<a class="dashboard-notification-item ${read?'read':''}" href="${href}" data-notification-id="${esc(x.id)}"><span class="dashboard-notification-dot"></span><span><div class="dashboard-notification-title">${esc(ev.title)}</div><div class="dashboard-notification-meta">${esc(actor)} · ${esc(x.created_at?relativeTime(x.created_at):'Récemment')}</div></span></a>`;
+    }).join('')+'<button class="dashboard-notification-close" type="button">Fermer</button>';
+    list.querySelectorAll('.dashboard-notification-item').forEach(a=>a.addEventListener('click',()=>{const id=a.dataset.notificationId;if(id)localStorage.setItem('sbi_notif_read_'+id,'1')}));
+    list.querySelector('.dashboard-notification-close')?.addEventListener('click',close);
+  };
+  const close=()=>{panel.classList.add('hidden');bell.setAttribute('aria-expanded','false')};
+  bell.addEventListener('click',e=>{e.stopPropagation();if(panel.classList.contains('hidden')){render();panel.classList.remove('hidden');bell.setAttribute('aria-expanded','true')}else close()});
+  document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target!==bell&&!bell.contains(e.target))close()});
+}
 function markDashboardNotificationsRead(){document.querySelectorAll('.notification-row').forEach(row=>row.classList.remove('notification-new'));document.querySelectorAll('#notificationsList [data-notification-id]').forEach(b=>{const id=b.getAttribute('data-notification-id');if(id)localStorage.setItem('sbi_notif_read_'+id,'1')});const bell=$('#notificationCount');if(bell)bell.textContent='0';const titleCount=$('#notificationCountTitle');if(titleCount)titleCount.textContent='0'}
 
 let NOTIFICATIONS_PAGE_ROWS=[];
@@ -684,26 +871,91 @@ async function notificationsPage(){
   const newBox=$('#newNotificationsList'),oldBox=$('#oldNotificationsList');
   if(newBox)newBox.innerHTML='<div class="dash-empty">Chargement...</div>';
   if(oldBox)oldBox.innerHTML='<div class="dash-empty">Chargement...</div>';
-  let data=[];
-  try{
-    const r=await withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(100),8000);
-    if(!r.error)data=r.data||[];
-    if(r.error)throw r.error;
-  }catch(e){
-    try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=100',100)}catch(_){data=[]}
+  let notificationBusy=false;
+  let knownIds=new Set();
+  async function refreshNotifications({remoteEvent=false,payload=null}={}){
+    if(notificationBusy||document.visibilityState==='hidden')return;
+    notificationBusy=true;
+    try{
+      let data=[];
+      try{
+        const r=await withTimeout(supabaseClient.from('maintenance').select('id,qr_id,date,technicien,type,travaux,created_at,created_by').order('created_at',{ascending:false}).limit(100),8000);
+        if(!r.error)data=r.data||[];
+        if(r.error)throw r.error;
+      }catch(e){
+        try{data=await restGetTableRows('maintenance','select=id,qr_id,date,technicien,type,travaux,created_at,created_by&order=created_at.desc&limit=100',100)}catch(_){data=[]}
+      }
+      const rows=(data||[]).filter(x=>{
+        const type=String(x.type||'').toLowerCase();
+        const qr=String(x.qr_id||'').trim().toLowerCase();
+        if(!x.qr_id)return false;
+        if(qr==='system')return false;
+        if(type.includes('connexion utilisateur')||type.includes('déconnexion utilisateur'))return false;
+        if(type.includes('demande changement mot de passe'))return false;
+        return true;
+      });
+      const prior=knownIds;
+      const fresh=rows.filter(x=>x?.id!=null&&!prior.has(String(x.id)));
+      knownIds=new Set(rows.map(x=>String(x.id)));
+      NOTIFICATIONS_PAGE_ROWS=rows;
+      renderNotificationsPage();
+      if(remoteEvent&&fresh.length){
+        const item=fresh[0]||payload?.new;
+        const remoteUserId=String(payload?.new?.created_by||item?.created_by||'');
+        const isRemote=!currentUser?.id||!remoteUserId||remoteUserId!==String(currentUser.id);
+        if(isRemote){
+          const c=CHARIOTS.find(v=>String(v.qr_id)===String(item?.qr_id));
+          const ev=formatMaintenanceEvent(item,c);
+          let box=document.getElementById('notificationsLiveToast');
+          if(!box){box=document.createElement('div');box.id='notificationsLiveToast';box.className='card-action-toast';document.body.appendChild(box)}
+          box.textContent=`${ev.title} · ${notificationActorName(item)}`;box.classList.add('show');
+          clearTimeout(window.__notificationsLiveToastTimer);window.__notificationsLiveToastTimer=setTimeout(()=>box.classList.remove('show'),4000);
+        }
+      }
+    }catch(e){console.warn('Actualisation notifications',e)}
+    finally{notificationBusy=false}
   }
-  NOTIFICATIONS_PAGE_ROWS=(data||[]).filter(x=>{
-    const type=String(x.type||'').toLowerCase();
-    const qr=String(x.qr_id||'').trim().toLowerCase();
-    if(!x.qr_id)return false;
-    if(qr==='system')return false;
-    if(type.includes('connexion utilisateur')||type.includes('déconnexion utilisateur'))return false;
-    if(type.includes('demande changement mot de passe'))return false;
-    return true;
-  });
-  renderNotificationsPage();
+  await refreshNotifications();
+  const realtimeChannel=startSbiRealtime(({table,payload})=>{
+    if(table!=='maintenance'||document.visibilityState==='hidden')return;
+    refreshNotifications({remoteEvent:true,payload});
+  },['maintenance']);
+  window.__SBI_NOTIFICATIONS_REALTIME=realtimeChannel;
+  window.clearInterval(window.__SBI_NOTIFICATIONS_TIMER);
+  window.__SBI_NOTIFICATIONS_TIMER=setInterval(()=>refreshNotifications(),30000);
 }
-async function chariotsPage(){if(!await session())return;await loadChariots();const initialSearch=new URLSearchParams(window.location.search).get('search')||'';const searchEl=$('#search');if(searchEl&&initialSearch){searchEl.value=initialSearch;}const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value;if(!e)return;let vals;if(id==='capacityFilter'){vals=['2.5T','3T','3.8T','5T','7T','10T','12T']}else{vals=[...new Set(CHARIOTS.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))}e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS;const sf=$('#statusFilter')?.value||'';if(sf==='stock')rows=rows.filter(isStock);if(sf==='delivered')rows=rows.filter(isDelivered);const q=$('#search')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id)?.value||norm(c[k])===norm($('#'+id).value)));$('#count').textContent=rows.length+' chariot'+(rows.length!==1?'s':'');$('#list').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun résultat.</div>'}$('#search').addEventListener('input',render);$('#statusFilter').addEventListener('change',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#statusFilter').value='';$('#search').value='';render()};render()}
+(function ensureLiveHighlightStyle(){
+  if(document.getElementById('sbiLiveHighlightStyle'))return;
+  const st=document.createElement('style');st.id='sbiLiveHighlightStyle';st.textContent='.sbi-live-highlight{outline:3px solid rgba(25,118,210,.28);outline-offset:2px;transition:outline-color .2s ease,box-shadow .2s ease;box-shadow:0 0 0 4px rgba(25,118,210,.08)}';document.head.appendChild(st);
+})();
+function highlightLiveListItem(listId,qr,message=''){
+  const box=document.getElementById(listId);
+  if(!box||!qr)return;
+  const el=box.querySelector(`[data-card-id=\"${CSS.escape(String(qr))}\"]`);
+  if(!el)return;
+  el.classList.add('sbi-live-highlight');
+  setTimeout(()=>el.classList.remove('sbi-live-highlight'),3000);
+  if(message)toastCardUpdate(qr,message);
+}
+
+async function chariotsPage(){if(!await session())return;await loadChariots();const initialSearch=new URLSearchParams(window.location.search).get('search')||'';const searchEl=$('#search');if(searchEl&&initialSearch){searchEl.value=initialSearch;}const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value;if(!e)return;let vals;if(id==='capacityFilter'){vals=['2.5T','3T','3.8T','5T','7T','10T','12T']}else{vals=[...new Set(CHARIOTS.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))}e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS;const sf=$('#statusFilter')?.value||'';if(sf==='stock')rows=rows.filter(isStock);if(sf==='delivered')rows=rows.filter(isDelivered);const q=$('#search')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id)?.value||norm(c[k])===norm($('#'+id).value)));$('#count').textContent=rows.length+' chariot'+(rows.length!==1?'s':'');$('#list').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun résultat.</div>'}$('#search').addEventListener('input',render);$('#statusFilter').addEventListener('change',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#statusFilter').value='';$('#search').value='';render()};render()
+  function highlightCard(qr,message='') {
+    const el=document.querySelector(`[data-card-id=\"${CSS.escape(String(qr))}\"]`);
+    if(!el)return;
+    el.classList.add('sbi-live-highlight');
+    setTimeout(()=>el.classList.remove('sbi-live-highlight'),3000);
+    if(message)toastCardUpdate(qr,message);
+  }
+  startSbiRealtime(async evt=>{
+    if(document.visibilityState==='hidden')return;
+    const before=new Map(CHARIOTS.map(c=>[String(c.qr_id),String(c.updated_at||'')]));
+    try{await loadChariots();render();const qr=evt?.payload?.new?.qr_id||evt?.payload?.old?.qr_id||'';const changed=qr?String(before.get(String(qr))||'')!==String(CHARIOTS.find(c=>String(c.qr_id)===String(qr))?.updated_at||''):true;highlightCard(qr,changed?'Mise à jour':'');}catch(e){console.warn('Actualisation temps réel chariots',e)}
+  },['chariots']);
+  window.__SBI_CHARIOTS_LIVE_TIMER=window.__SBI_CHARIOTS_LIVE_TIMER||setInterval(async()=>{
+    if(document.visibilityState==='hidden')return;
+    try{await loadChariots();render()}catch(e){}
+  },30000);
+}
 async function detailPage(){
   if(!await session())return;
   await loadChariots();
@@ -763,8 +1015,20 @@ async function saveChariot(){
 }
 async function markDelivered(qrId){if(!requireValidLicense()||!requireAdminForDelivery())return;const c=CHARIOTS.find(x=>String(x.qr_id)===String(qrId));if(!c)return alert('Chariot introuvable.');if(isDelivered(c))return;if(!confirm('Passer le chariot '+qrId+' directement au statut « Livré » ?'))return;const payload={status:'Livré',delivery_date:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString()};const {error}=await supabaseClient.from('chariots').update(payload).eq('qr_id',qrId);if(error){alert('Erreur : '+error.message);return}try{await supabaseClient.from('maintenance').insert({qr_id:qrId,date:payload.delivery_date,technicien:getUserDisplayName(),type:'Statut',travaux:`Statut : ${c.status||'—'} → Livré`,created_by:currentUser.id})}catch(e){console.warn('Notification livraison non enregistrée',e)}c.status=payload.status;c.delivery_date=payload.delivery_date;c.updated_at=payload.updated_at;if(typeof chariotsPage==='function'&&document.getElementById('list')){const input=document.getElementById('search');const filter=document.getElementById('filter');if(input&&filter){let rows=CHARIOTS;const f=filter.value||'all';if(f==='stock')rows=rows.filter(isStock);if(f==='delivered')rows=rows.filter(isDelivered);const q=input.value.trim().toLowerCase();if(q)rows=rows.filter(x=>[x.qr_id,x.chassis,x.engine,x.client,x.capacity].some(v=>String(v||'').toLowerCase().includes(q)));document.getElementById('count').textContent=rows.length+' chariot'+(rows.length!==1?'s':'');document.getElementById('list').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun résultat.</div>';}}else location.reload();}
 async function deleteChariot(){if(!requireValidLicense()||!requireAdmin())return;const id=new URLSearchParams(location.search).get('id')||$('#qr_id')?.value;if(!id)return;const c=CHARIOTS.find(x=>String(x.qr_id)===String(id));if(!confirm('Supprimer définitivement le chariot '+id+' ?'))return;try{await supabaseClient.from('maintenance').insert({qr_id:id,date:new Date().toISOString().slice(0,10),technicien:getUserDisplayName(),type:'Suppression chariot',travaux:`Chariot supprimé • Châssis : ${c?.chassis||'—'} • Moteur : ${c?.engine||'—'} • Client : ${c?.client||'—'}`,created_by:currentUser.id})}catch(e){console.warn('Historique suppression non enregistré',e)}const {error}=await supabaseClient.from('chariots').delete().eq('qr_id',id);if(error){alert('Erreur : '+friendlySupabaseError(error));return}location.href='chariots.html'}
-async function stockPage(){if(!await session())return;await loadChariots();const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const rows=CHARIOTS.filter(isStock);const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value,vals=[...new Set(rows.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS.filter(isStock);const q=$('#stockSearch')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id).value||norm(c[k])===norm($('#'+id).value)));$('#stockCount').textContent=rows.length+' chariot'+(rows.length!==1?'s':'')+' en stock';$('#stockList').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun chariot en stock.</div>'}$('#stockSearch').addEventListener('input',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#stockSearch').value='';render()};render()}
-async function deliveredPage(){if(!await session())return;await loadChariots();function render(){const q=$('#deliveredSearch').value.trim().toLowerCase();const rows=CHARIOTS.filter(isDelivered).filter(c=>!q||[c.qr_id,c.chassis,c.engine,c.client].some(v=>String(v||'').toLowerCase().includes(q))).sort((a,b)=>{const da=new Date(a.delivery_date||0).getTime();const db=new Date(b.delivery_date||0).getTime();if(db!==da)return db-da;return new Date(b.updated_at||0).getTime()-new Date(a.updated_at||0).getTime()});$('#deliveredCount').textContent=rows.length+' chariot'+(rows.length!==1?'s':'')+' livré'+(rows.length!==1?'s':'');$('#deliveredList').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun chariot livré.</div>'}$('#deliveredSearch').addEventListener('input',render);render()}
+async function stockPage(){if(!await session())return;await loadChariots();const ids=['engineFilter','capacityFilter','mastFilter','heightFilter'];function fill(){const rows=CHARIOTS.filter(isStock);const defs=[['engineFilter','engine','Moteur : Tous'],['capacityFilter','capacity','Capacité : Toutes'],['mastFilter','mast_type','Mât : Tous'],['heightFilter','lifting_height','Hauteur : Toutes']];defs.forEach(([id,k,label])=>{const e=$('#'+id),old=e.value,vals=[...new Set(rows.map(c=>String(c[k]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(vals.includes(old))e.value=old})}function render(){fill();let rows=CHARIOTS.filter(isStock);const q=$('#stockSearch')?.value.trim().toLowerCase()||'';const fs=[['engineFilter','engine'],['capacityFilter','capacity'],['mastFilter','mast_type'],['heightFilter','lifting_height']];rows=rows.filter(c=>(!q||[c.qr_id,c.chassis,c.engine,c.client,c.capacity].some(v=>String(v||'').toLowerCase().includes(q)))&&fs.every(([id,k])=>!$('#'+id).value||norm(c[k])===norm($('#'+id).value)));$('#stockCount').textContent=rows.length+' chariot'+(rows.length!==1?'s':'')+' en stock';$('#stockList').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun chariot en stock.</div>'}$('#stockSearch').addEventListener('input',render);ids.forEach(id=>$('#'+id).addEventListener('change',render));$('#clearFilters').onclick=()=>{ids.forEach(id=>$('#'+id).value='');$('#stockSearch').value='';render()};render()
+  startSbiRealtime(async evt=>{
+    if(document.visibilityState==='hidden')return;
+    try{await loadChariots();render();const qr=evt?.payload?.new?.qr_id||evt?.payload?.old?.qr_id||'';if(qr)highlightLiveListItem('stockList',qr,'Stock actualisé');}catch(e){console.warn('Actualisation temps réel stock',e)}
+  },['chariots']);
+  window.__SBI_STOCK_LIVE_TIMER=window.__SBI_STOCK_LIVE_TIMER||setInterval(async()=>{if(document.visibilityState==='hidden')return;try{await loadChariots();render()}catch(e){}},30000);
+}
+async function deliveredPage(){if(!await session())return;await loadChariots();function render(){const q=$('#deliveredSearch').value.trim().toLowerCase();const rows=CHARIOTS.filter(isDelivered).filter(c=>!q||[c.qr_id,c.chassis,c.engine,c.client].some(v=>String(v||'').toLowerCase().includes(q))).sort((a,b)=>{const da=new Date(a.delivery_date||0).getTime();const db=new Date(b.delivery_date||0).getTime();if(db!==da)return db-da;return new Date(b.updated_at||0).getTime()-new Date(a.updated_at||0).getTime()});$('#deliveredCount').textContent=rows.length+' chariot'+(rows.length!==1?'s':'')+' livré'+(rows.length!==1?'s':'');$('#deliveredList').innerHTML=rows.map(card).join('')||'<div class="empty">Aucun chariot livré.</div>'}$('#deliveredSearch').addEventListener('input',render);render()
+  startSbiRealtime(async evt=>{
+    if(document.visibilityState==='hidden')return;
+    try{await loadChariots();render();const qr=evt?.payload?.new?.qr_id||evt?.payload?.old?.qr_id||'';if(qr)highlightLiveListItem('deliveredList',qr,'Liste des livrés actualisée');}catch(e){console.warn('Actualisation temps réel livrés',e)}
+  },['chariots']);
+  window.__SBI_DELIVERED_LIVE_TIMER=window.__SBI_DELIVERED_LIVE_TIMER||setInterval(async()=>{if(document.visibilityState==='hidden')return;try{await loadChariots();render()}catch(e){}},30000);
+}
 async function qrPage(){if(!await session())return;await loadChariots();const sel=$('#qrSelect');const rows=[...CHARIOTS].sort((a,b)=>Number(b.id)-Number(a.id));sel.innerHTML='<option value="">Choisir un chariot...</option>'+rows.map(c=>`<option value="${esc(c.qr_id)}">${esc(c.qr_id)} — ${esc(c.chassis||'')} — ${esc(c.engine||'')} — ${esc(fmtCapacity(c.capacity))}</option>`).join('');sel.value=rows[0]?.qr_id||'';renderQR(sel.value);sel.onchange=()=>renderQR(sel.value)}
 function renderQR(id){const box=$('#qr');if(!box)return;box.innerHTML='';const c=CHARIOTS.find(x=>x.qr_id===id);if(!c){$('#qrLabel').textContent='';return}const url=location.origin+location.pathname.replace('qr-codes.html','chariot.html')+'?id='+encodeURIComponent(id);new QRCode(box,{text:url,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});$('#qrLabel').textContent=id}
 function printSelectedQrCode(){const box=$('#qr');const source=box?.querySelector('canvas,img');if(!source){alert('QR code introuvable.');return}const src=source.tagName.toLowerCase()==='canvas'?source.toDataURL('image/png'):source.src;const w=window.open('','_blank','width=600,height=700');if(!w){alert('Autorisez les fenêtres popup.');return}w.document.write(`<html><head><title>QR Code</title><style>@page{margin:0}body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center}img{width:70mm;height:70mm}</style></head><body><img src="${src}"></body></html>`);w.document.close();w.onload=()=>{w.print();setTimeout(()=>w.close(),300)}}
@@ -833,7 +1097,57 @@ async function toggleSbiUser(id,disabled){if(!requireAdmin())return;const {error
 async function deleteSbiUser(id){if(!requireAdmin()||!confirm('Supprimer définitivement cet utilisateur ?'))return;const {error}=await supabaseClient.rpc('admin_delete_sbi_user',{p_user_id:id});if(error)alert('Erreur : '+error.message);else await loadSbiUsers()}
 async function licencePage(){if(!await session())return;if(!isAdmin()){$('#licensePanel').innerHTML='<div class="notice red">Gestion de licence réservée à l’administrateur.</div>';return}const {data,error}=await supabaseClient.from('licenses').select('company_name,status,start_date,expiration_date').eq('company_name',LICENSE_COMPANY).maybeSingle();if(error){$('#licenseMsg').textContent=error.message;return}if(!data){$('#licenseMsg').textContent='Licence introuvable.';return}$('#licenseStatus').value=data.status||'active';$('#licenseStart').value=data.start_date||'';$('#licenseExpiry').value=data.expiration_date||''}
 async function saveLicense(){if(!requireAdmin())return;const status=$('#licenseStatus').value,start_date=$('#licenseStart').value,expiration_date=$('#licenseExpiry').value||null;if(!start_date)return $('#licenseMsg').textContent='Date de début obligatoire.';if(expiration_date&&expiration_date<start_date)return $('#licenseMsg').textContent='Expiration invalide.';const {error}=await supabaseClient.from('licenses').update({status,start_date,expiration_date}).eq('company_name',LICENSE_COMPANY);if(error){$('#licenseMsg').textContent='Erreur : '+error.message;return}$('#licenseMsg').textContent='Licence mise à jour.';await verifyLicense()}
-async function initPage(fn){if(!(await enforceMaintenance()))return;if(!(await getSession())){location.href=maintenanceEnabled()?'maintenance.html':'index.html';return}applyLicenseCache();await fn();if(currentUser&&typeof renderConnectedUser==='function')renderConnectedUser();verifyLicense()}
+
+// Live presence: shows which authenticated SBI users are currently active.
+let SBI_PRESENCE_CHANNEL=null;
+function getPresenceRoleLabel(user=currentUser){
+  const role=String(user?.user_metadata?.sbi_role||user?.app_metadata?.sbi_role||'user').toLowerCase();
+  return role==='admin'?'Admin':'Utilisateur';
+}
+function presenceInitial(name){return String(name||'U').trim().charAt(0).toUpperCase()||'U'}
+function presenceRows(channel){
+  const state=channel?.presenceState?.()||{};
+  const map=new Map();
+  Object.keys(state).forEach(key=>{
+    (state[key]||[]).forEach(p=>{
+      const uid=String(p.user_id||key||'').trim()||key;
+      const existing=map.get(uid);
+      if(!existing||new Date(p.at||0).getTime()>new Date(existing.at||0).getTime())map.set(uid,{...p,user_id:uid});
+    });
+  });
+  return [...map.values()].sort((a,b)=>String(a.name||a.email||'').localeCompare(String(b.name||b.email||''),'fr',{sensitivity:'base'}));
+}
+function renderPresenceRows(rows){
+  const count=rows.length;
+  document.querySelectorAll('[data-online-count]').forEach(el=>{el.textContent=String(count)});
+  const own=String(currentUser?.id||'');
+  document.querySelectorAll('[data-online-list]').forEach(box=>{
+    if(!rows.length){box.innerHTML='<div class="presence-empty">Aucun utilisateur connecté.</div>';return}
+    box.innerHTML=rows.map(p=>{
+      const name=String(p.name||p.email||'Utilisateur').trim()||'Utilisateur';
+      const email=String(p.email||'').trim();
+      const role=String(p.role||'Utilisateur');
+      const isMe=String(p.user_id||'')===own;
+      return `<div class="presence-user-row"><span class="presence-avatar">${esc(presenceInitial(name))}</span><div class="presence-user-main"><div class="presence-user-name">${esc(name)}${isMe?' <span class="presence-me">Vous</span>':''}</div><div class="presence-user-meta">${esc(role)}${email&&email.toLowerCase()!==name.toLowerCase()?` · ${esc(email)}`:''}</div></div><span class="presence-online-dot" title="En ligne"></span></div>`;
+    }).join('');
+  });
+}
+function stopSbiPresence(){if(!SBI_PRESENCE_CHANNEL)return;try{SBI_PRESENCE_CHANNEL.untrack()}catch(_){}try{if(supabaseClient?.removeChannel)supabaseClient.removeChannel(SBI_PRESENCE_CHANNEL)}catch(_){}SBI_PRESENCE_CHANNEL=null}
+async function startSbiPresence(){
+  if(!currentUser||!supabaseClient?.channel)return null;
+  stopSbiPresence();
+  const channel=supabaseClient.channel('sbi-users-online',{config:{presence:{key:String(currentUser.id)}}});
+  channel.on('presence',{event:'sync'},()=>renderPresenceRows(presenceRows(channel)));
+  channel.on('presence',{event:'join'},()=>renderPresenceRows(presenceRows(channel)));
+  channel.on('presence',{event:'leave'},()=>renderPresenceRows(presenceRows(channel)));
+  const name=getUserDisplayName();
+  const payload={user_id:String(currentUser.id),name,email:String(currentUser.email||''),role:getPresenceRoleLabel(),at:new Date().toISOString()};
+  const status=await new Promise(resolve=>{let done=false;const finish=v=>{if(done)return;done=true;resolve(v)};channel.subscribe(async st=>{if(st==='SUBSCRIBED'){try{await channel.track(payload)}catch(e){console.warn('Présence SBI non enregistrée',e)}renderPresenceRows(presenceRows(channel));finish(st)}else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT'){console.warn('Présence SBI indisponible');finish(st)}});setTimeout(()=>finish('TIMEOUT'),8000)});
+  if(status==='SUBSCRIBED'){SBI_PRESENCE_CHANNEL=channel;window.__SBI_PRESENCE_CHANNEL=channel;window.addEventListener('beforeunload',stopSbiPresence,{once:true});}
+  return channel;
+}
+
+async function initPage(fn){if(!(await enforceMaintenance()))return;if(!(await getSession())){location.href=maintenanceEnabled()?'maintenance.html':'index.html';return}applyLicenseCache();await fn();if(currentUser&&typeof renderConnectedUser==='function')renderConnectedUser();try{await startSbiPresence()}catch(e){console.warn('Présence SBI indisponible',e)}verifyLicense()}
 
 
 async function deliveryPlanningPage(){
@@ -846,13 +1160,15 @@ async function deliveryPlanningPage(){
   let plans=[...DELIVERY_PLANS];
   renderDashboardWatch();
   const els={week:$('#weekDays'),list:$('#deliveryList'),range:$('#rangeTitle'),modal:$('#deliveryModal'),form:$('#deliveryForm'),search:$('#deliverySearch'),searchResults:$('#deliverySearchResults'),clearSearch:$('#clearDeliverySearch'),chariot:$('#deliveryChariot'),date:$('#deliveryDate'),time:$('#deliveryTime'),driver:$('#deliveryDriver'),destination:$('#deliveryDestination'),note:$('#deliveryNote'),noteCount:$('#deliveryNoteCount'),close:$('#closeDeliveryModal'),today:$('#todayBtn'),prev:$('#prevWeek'),next:$('#nextWeek'),plan:$('#planBtn'),cancel:$('#cancelDelivery'),todayCount:$('#todayCount'),weekCount:$('#weekCount'),plannedCount:$('#plannedCount')};
-  let selectedDate=localDateISO(new Date()), weekStart=startOfWeek(new Date()), refreshBusy=false;
+  let selectedDate=localDateISO(new Date()), weekStart=startOfWeek(new Date()), refreshBusy=false, planningLocalMutationUntil=0;
   function localDateISO(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
   function parseDate(s){const [y,m,d]=String(s).split('-').map(Number);return new Date(y||2000,(m||1)-1,d||1)}
   function startOfWeek(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const n=x.getDay();const diff=n===6?0:-(n+1);x.setDate(x.getDate()+diff);return x}
   function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
   function formatLong(s){return parseDate(s).toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}
   function syncPlans(next){plans=Array.isArray(next)?[...next]:[];cacheDeliveryPlans(plans)}
+  function changedPlanningIds(beforeItems,afterItems){const a=new Map((beforeItems||[]).map(p=>[String(p.id),p])),b=new Map((afterItems||[]).map(p=>[String(p.id),p]));const ids=new Set();for(const id of new Set([...a.keys(),...b.keys()])){const pa=a.get(id),pb=b.get(id);if(JSON.stringify(pa||null)!==JSON.stringify(pb||null))ids.add(id)}return [...ids]}
+  function highlightPlanningRows(ids){if(!ids?.length)return;for(const id of ids){let row=null;try{row=els.list?.querySelector?.(`[data-plan-row-id="${CSS.escape(String(id))}"]`)}catch(_){row=[...els.list?.querySelectorAll?.('[data-plan-row-id]')||[]].find(r=>String(r.dataset.planRowId)===String(id))}if(!row)continue;row.classList.add('delivery-row-live-updated');setTimeout(()=>row.classList.remove('delivery-row-live-updated'),3200)}}
   function getMachine(qr){return CHARIOTS.find(c=>String(c.qr_id)===String(qr))}
   function availableChariots(excludeQr=''){
     const excluded=plans.filter(p=>String(p.qr)!==String(excludeQr)).map(p=>String(p.qr));
@@ -877,8 +1193,9 @@ async function deliveryPlanningPage(){
   }
   function weekPlans(){const a=localDateISO(weekStart),b=localDateISO(addDays(weekStart,5));return plans.filter(p=>p.date>=a&&p.date<=b)}
   function renderStats(){const today=localDateISO(new Date());els.todayCount.textContent=plans.filter(p=>p.date===today).length;els.weekCount.textContent=weekPlans().length;els.plannedCount.textContent=plans.length}
-  function renderWeek(){const dates=Array.from({length:6},(_,i)=>addDays(weekStart,i));els.range.textContent=`Semaine du ${dates[0].toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})} au ${dates[5].toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}`;els.week.innerHTML=dates.map(d=>{const iso=localDateISO(d);const dayPlans=plans.filter(p=>p.date===iso);const n=dayPlans.length;const delivered=dayPlans.filter(p=>isDelivered(getMachine(p.qr))).length;return `<button type="button" class="delivery-day ${iso===selectedDate?'active':''}" data-date="${iso}"><div class="dow">${esc(d.toLocaleDateString('fr-FR',{weekday:'long'}))}</div><div class="date">${esc(d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}))}</div><div class="num">${n} livraison${n!==1?'s':''}</div><div class="delivered-num">${delivered} chariot${delivered!==1?'s':''} livré${delivered!==1?'s':''}</div></button>`}).join('');els.week.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{selectedDate=b.dataset.date;renderWeek();renderList()})}
-  function renderList(){let rows=plans.filter(p=>p.date===selectedDate).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));els.list.innerHTML=rows.length?rows.map(p=>{const c=getMachine(p.qr);const href='chariot.html?id='+encodeURIComponent(p.qr||'');return `<div class="delivery-row"><div class="delivery-time">${esc(p.time||'—')}</div><div class="delivery-main"><a class="delivery-chariot-link" href="${href}"><div class="delivery-title">${esc(c?.chassis||p.qr||'Chariot')}</div></a><div class="delivery-meta">${esc(c?.engine||'—')} · ${esc(fmtCapacity(c?.capacity))} · ${esc(c?.client||'Sans client')}</div>${p.driver?`<div class="delivery-meta"><strong>Chauffeur :</strong> ${esc(p.driver)}</div>`:''}${p.destination?`<div class="delivery-meta"><strong>Destination :</strong> ${esc(p.destination)}</div>`:''}${p.note?`<div class="delivery-meta">${esc(p.note)}</div>`:''}</div><div class="delivery-actions">${isAdmin()&&!isDelivered(c)?`<button class="btn deliver-plan-btn" type="button" data-deliver-plan="${esc(p.qr)}" data-plan-id="${esc(p.id)}">Livrer</button>`:''}<button class="btn light" type="button" data-edit="${esc(p.id)}">Modifier</button><button class="btn light" type="button" data-delete="${esc(p.id)}">Supprimer</button></div></div>`}).join(''):`<div class="delivery-empty">Aucune livraison planifiée pour ${esc(formatLong(selectedDate))}.</div>`;els.list.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEdit(b.dataset.edit));els.list.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removePlan(b.dataset.delete));els.list.querySelectorAll('[data-deliver-plan]').forEach(b=>b.onclick=()=>deliverPlanned(b.dataset.deliverPlan,b.dataset.planId));renderStats()}
+  function renderWeek(){const dates=Array.from({length:6},(_,i)=>addDays(weekStart,i));els.range.textContent=`Semaine du ${dates[0].toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})} au ${dates[5].toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}`;els.week.innerHTML=dates.map(d=>{const iso=localDateISO(d);const dayPlans=plans.filter(p=>p.date===iso);const n=dayPlans.length;const delivered=dayPlans.filter(p=>isDelivered(getMachine(p.qr))).length;return `<button type="button" class="delivery-day" data-date="${iso}"><div class="dow">${esc(d.toLocaleDateString('fr-FR',{weekday:'long'}))}</div><div class="date">${esc(d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}))}</div><div class="num">${n} livraison${n!==1?'s':''}</div><div class="delivered-num">${delivered} chariot${delivered!==1?'s':''} livré${delivered!==1?'s':''}</div></button>`}).join('');els.week.querySelectorAll('[data-date]').forEach(b=>{b.classList.toggle('active',b.dataset.date===selectedDate);b.onclick=()=>{selectedDate=b.dataset.date;renderWeek();renderList()};b.addEventListener('dragover',e=>{e.preventDefault();b.classList.add('delivery-day-drop-target');if(e.dataTransfer)e.dataTransfer.dropEffect='move'});b.addEventListener('dragleave',()=>b.classList.remove('delivery-day-drop-target'));b.addEventListener('drop',async e=>{e.preventDefault();b.classList.remove('delivery-day-drop-target');const id=e.dataTransfer?.getData('text/sbi-plan-id')||'';if(id)await movePlanToDate(id,b.dataset.date)})})}
+  function renderList(){let rows=plans.filter(p=>p.date===selectedDate).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));els.list.innerHTML=rows.length?rows.map(p=>{const c=getMachine(p.qr);const href='chariot.html?id='+encodeURIComponent(p.qr||'');return `<div class="delivery-row delivery-row-clickable" draggable="true" data-plan-row-id="${esc(p.id)}" title="Cliquer sur la ligne pour modifier la livraison • Glisser vers un autre jour pour déplacer"><div class="delivery-time"><span class="delivery-drag-hint" aria-hidden="true">↕</span>${esc(p.time||'—')}</div><div class="delivery-main"><a class="delivery-chariot-link" title="Ouvrir la fiche du chariot" href="${href}"><div class="delivery-title">${esc(c?.chassis||p.qr||'Chariot')}</div></a><div class="delivery-meta">${esc(c?.engine||'—')} · ${esc(fmtCapacity(c?.capacity))} · ${esc(c?.client||'Sans client')}</div>${p.driver?`<div class="delivery-meta"><strong>Chauffeur :</strong> ${esc(p.driver)}</div>`:''}${p.destination?`<div class="delivery-meta"><strong>Destination :</strong> ${esc(p.destination)}</div>`:''}${p.note?`<div class="delivery-meta">${esc(p.note)}</div>`:''}</div><div class="delivery-actions">${isAdmin()&&!isDelivered(c)?`<button class="btn deliver-plan-btn" type="button" data-deliver-plan="${esc(p.qr)}" data-plan-id="${esc(p.id)}">Livrer</button>`:''}<button class="btn light" type="button" data-edit="${esc(p.id)}">Modifier</button><button class="btn light" type="button" data-delete="${esc(p.id)}">Supprimer</button></div></div>`}).join(''):`<div class="delivery-empty">Aucune livraison planifiée pour ${esc(formatLong(selectedDate))}.</div>`;els.list.querySelectorAll('[data-plan-row-id]').forEach(row=>{row.addEventListener('click',e=>{if(e.target.closest('a,button,input,select,textarea'))return;openEdit(row.dataset.planRowId)});row.addEventListener('dragstart',e=>{if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/sbi-plan-id',row.dataset.planRowId);e.dataTransfer.setData('text/plain',row.dataset.planRowId)}row.classList.add('delivery-row-dragging')});row.addEventListener('dragend',()=>{row.classList.remove('delivery-row-dragging');els.week.querySelectorAll('.delivery-day-drop-target').forEach(d=>d.classList.remove('delivery-day-drop-target'))})});els.list.querySelectorAll('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEdit(b.dataset.edit)});els.list.querySelectorAll('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();removePlan(b.dataset.delete)});els.list.querySelectorAll('[data-deliver-plan]').forEach(b=>b.onclick=e=>{e.stopPropagation();deliverPlanned(b.dataset.deliverPlan,b.dataset.planId)});renderStats()}
+  async function movePlanToDate(id,newDate){const p=plans.find(x=>String(x.id)===String(id));if(!p||!newDate||String(p.date)===String(newDate))return;planningLocalMutationUntil=Date.now()+4000;const c=getMachine(p.qr);const payload={id:String(p.id),qr:String(p.qr),date:String(newDate),time:String(p.time||''),driver:String(p.driver||''),destination:String(p.destination||''),note:String(p.note||'')};const oldDate=String(p.date||'');const label=c?.chassis||p.qr;if(!confirm(`Déplacer la livraison ${label} du ${formatLong(oldDate)} au ${formatLong(newDate)} ?`))return;const now=new Date().toISOString();const {error}=await supabaseClient.from('maintenance').insert({qr_id:p.qr,date:newDate,technicien:getUserDisplayName(),type:'Planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await supabaseClient.from('maintenance').insert({qr_id:p.qr,date:newDate,technicien:getUserDisplayName(),type:'Modification planification livraison',travaux:`Date : ${oldDate||'—'} → ${newDate}`,created_by:currentUser?.id||null})}catch(e){console.warn('Historique déplacement non enregistré',e)}try{await loadDeliveryPlans()}catch(e){}syncPlans(DELIVERY_PLANS);selectedDate=newDate;weekStart=startOfWeek(parseDate(newDate));renderWeek();renderList();toastPlanning(`Livraison ${label} déplacée au ${formatLong(newDate)}`)}
   async function deliverPlanned(qr,id){if(!requireAdminForDelivery())return;const c=getMachine(qr);if(!c)return alert('Chariot introuvable.');if(isDelivered(c))return;if(!confirm('Passer le chariot '+(c.chassis||qr)+' directement au statut « Livré » ?'))return;const now=new Date(),deliveryDate=localDateISO(now),updatedAt=now.toISOString();const {error}=await supabaseClient.from('chariots').update({status:'Livré',delivery_date:deliveryDate,updated_at:updatedAt}).eq('qr_id',qr);if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await supabaseClient.from('maintenance').insert({qr_id:qr,date:deliveryDate,technicien:getUserDisplayName(),type:'Statut',travaux:`Statut : ${c.status||'—'} → Livré`,created_by:currentUser.id})}catch(e){console.warn('Notification livraison non enregistrée',e)}c.status='Livré';c.delivery_date=deliveryDate;c.updated_at=updatedAt;cacheDeliveryPlans(plans);renderWeek();renderList();alert('Chariot '+(c.chassis||qr)+' passé au statut « Livré ».')}
   function fillDeliverySuggestions(){const drivers=[...new Set(plans.map(p=>String(p.driver||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));const destinations=[...new Set(plans.map(p=>String(p.destination||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));if(els.driverOptions)els.driverOptions.innerHTML=drivers.map(v=>`<option value="${esc(v)}"></option>`).join('');if(els.destinationOptions)els.destinationOptions.innerHTML=destinations.map(v=>`<option value="${esc(v)}"></option>`).join('')}
   function updateNoteCount(){if(els.noteCount&&els.note)els.noteCount.textContent=`${els.note.value.length}/200`}
@@ -893,12 +1210,28 @@ async function deliveryPlanningPage(){
   function openModal(date=selectedDate,qr=''){refreshChariotOptions();fillDeliverySuggestions();els.form.dataset.edit='';els.date.value=date;els.time.value='';els.driver.value='';els.destination.value='';els.note.value='';updateNoteCount();els.chariot.value=qr;els.search.value='';els.searchResults.innerHTML='';els.modal.classList.remove('hidden');setTimeout(()=>els.search.focus(),20)}
   function openEdit(id){const p=plans.find(x=>x.id===id);if(!p)return;refreshChariotOptions(p.qr);fillDeliverySuggestions();els.form.dataset.edit=id;els.date.value=p.date;els.time.value=p.time||'';els.note.value=p.note||'';updateNoteCount();els.chariot.value=p.qr;setSelectValue(els.driver,p.driver,'Ancien chauffeur');setSelectValue(els.destination,p.destination,'Ancienne destination');els.search.value='';els.searchResults.innerHTML='';els.modal.classList.remove('hidden');setTimeout(()=>els.search.focus(),20)}
   function closeModal(){els.modal.classList.add('hidden');els.form.dataset.edit=''}
-  async function refreshFromServer(){if(refreshBusy||document.visibilityState==='hidden')return;refreshBusy=true;try{const before=JSON.stringify(plans);const remote=await loadDeliveryPlans();if(JSON.stringify(remote)!==before){syncPlans(remote);renderWeek();renderList()}}catch(e){console.warn('Actualisation planning',e)}finally{refreshBusy=false}}
-  async function removePlan(id){if(!confirm('Supprimer cette livraison du planning ?'))return;const p=plans.find(x=>x.id===id);if(!p)return;const payload={id:p.id,qr:p.qr,date:p.date,time:p.time||'',note:p.note||''};const {error}=await supabaseClient.from('maintenance').insert({qr_id:p.qr,date:p.date,technicien:getUserDisplayName(),type:'Annulation planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await loadDeliveryPlans()}catch(e){}syncPlans(DELIVERY_PLANS);renderWeek();renderList()}
-  els.form.onsubmit=async e=>{e.preventDefault();const qr=els.chariot.value,date=els.date.value||localDateISO(new Date()),time=els.time.value||'',driver=els.driver.value.trim(),destination=els.destination.value.trim(),note=els.note.value.trim();if(!qr){alert('Veuillez sélectionner un chariot.');return}const edit=els.form.dataset.edit;const duplicate=plans.some(p=>String(p.qr)===String(qr)&&p.id!==edit);if(duplicate){alert('Ce chariot est déjà planifié pour une livraison.');return}const logicalId=edit||('dp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));const payload={id:logicalId,qr:String(qr),date:String(date),time:String(time||''),driver:String(driver||''),destination:String(destination||''),note:String(note||'')};const previous=edit?plans.find(x=>String(x.id)===String(edit)):null;let planHistory='';if(previous){const changed=[];for(const [k,label] of [['date','Date'],['time','Heure'],['driver','Chauffeur'],['destination','Destination'],['note','Note']]){const a=String(previous[k]||''),b=String(payload[k]||'');if(a!==b)changed.push(`${label} : ${a||'—'} → ${b||'—'}`)}planHistory=changed.join(' • ')}const {error}=await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:getUserDisplayName(),type:'Planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}if(edit&&planHistory){try{await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:getUserDisplayName(),type:'Modification planification livraison',travaux:planHistory,created_by:currentUser?.id||null})}catch(e){console.warn('Historique modification planification non enregistré',e)}}try{await loadDeliveryPlans()}catch(e){alert('Planification enregistrée mais actualisation impossible : '+friendlySupabaseError(e))}syncPlans(DELIVERY_PLANS);selectedDate=date;weekStart=startOfWeek(parseDate(date));closeModal();refreshChariotOptions();renderWeek();renderList()};
+  async function refreshFromServer({remoteEvent=false}={}){if(refreshBusy||document.visibilityState==='hidden')return;refreshBusy=true;try{const beforeItems=[...plans];const remote=await loadDeliveryPlans();const changedIds=changedPlanningIds(beforeItems,remote);if(changedIds.length){syncPlans(remote);renderWeek();renderList();highlightPlanningRows(changedIds);if(remoteEvent&&Date.now()>planningLocalMutationUntil){const changed=changedIds.map(id=>remote.find(p=>String(p.id)===String(id))||beforeItems.find(p=>String(p.id)===String(id))).find(Boolean);const c=changed?getMachine(changed.qr):null;const label=c?.chassis||changed?.qr||'une livraison';toastPlanning(`Planning mis à jour en temps réel : ${label}`)}}}catch(e){console.warn('Actualisation planning',e)}finally{refreshBusy=false}}
+  function toastPlanning(message){let box=document.getElementById('planningToast');if(!box){box=document.createElement('div');box.id='planningToast';box.className='card-action-toast';document.body.appendChild(box)}box.textContent=message;box.classList.add('show');clearTimeout(window.__planningToastTimer);window.__planningToastTimer=setTimeout(()=>box.classList.remove('show'),3200)}
+  async function removePlan(id){if(!confirm('Supprimer cette livraison du planning ?'))return;planningLocalMutationUntil=Date.now()+4000;const p=plans.find(x=>x.id===id);if(!p)return;const payload={id:p.id,qr:p.qr,date:p.date,time:p.time||'',note:p.note||''};const {error}=await supabaseClient.from('maintenance').insert({qr_id:p.qr,date:p.date,technicien:getUserDisplayName(),type:'Annulation planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}try{await loadDeliveryPlans()}catch(e){}syncPlans(DELIVERY_PLANS);renderWeek();renderList()}
+  els.form.onsubmit=async e=>{e.preventDefault();const qr=els.chariot.value,date=els.date.value||localDateISO(new Date()),time=els.time.value||'',driver=els.driver.value.trim(),destination=els.destination.value.trim(),note=els.note.value.trim();planningLocalMutationUntil=Date.now()+4000;if(!qr){alert('Veuillez sélectionner un chariot.');return}const edit=els.form.dataset.edit;const duplicate=plans.some(p=>String(p.qr)===String(qr)&&p.id!==edit);if(duplicate){alert('Ce chariot est déjà planifié pour une livraison.');return}const logicalId=edit||('dp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));const payload={id:logicalId,qr:String(qr),date:String(date),time:String(time||''),driver:String(driver||''),destination:String(destination||''),note:String(note||'')};const previous=edit?plans.find(x=>String(x.id)===String(edit)):null;let planHistory='';if(previous){const changed=[];for(const [k,label] of [['date','Date'],['time','Heure'],['driver','Chauffeur'],['destination','Destination'],['note','Note']]){const a=String(previous[k]||''),b=String(payload[k]||'');if(a!==b)changed.push(`${label} : ${a||'—'} → ${b||'—'}`)}planHistory=changed.join(' • ')}const {error}=await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:getUserDisplayName(),type:'Planification livraison',travaux:JSON.stringify(payload),created_by:currentUser?.id||null});if(error){alert('Erreur : '+friendlySupabaseError(error));return}if(edit&&planHistory){try{await supabaseClient.from('maintenance').insert({qr_id:qr,date,technicien:getUserDisplayName(),type:'Modification planification livraison',travaux:planHistory,created_by:currentUser?.id||null})}catch(e){console.warn('Historique modification planification non enregistré',e)}}try{await loadDeliveryPlans()}catch(e){alert('Planification enregistrée mais actualisation impossible : '+friendlySupabaseError(e))}syncPlans(DELIVERY_PLANS);selectedDate=date;weekStart=startOfWeek(parseDate(date));closeModal();refreshChariotOptions();renderWeek();renderList()};
   els.cancel.onclick=closeModal;els.close?.addEventListener('click',closeModal);els.clearSearch?.addEventListener('click',()=>{els.search.value='';renderSearchResults();els.search.focus()});els.modal.addEventListener('click',e=>{if(e.target===els.modal)closeModal()});els.search?.addEventListener('input',renderSearchResults);els.search?.addEventListener('search',renderSearchResults);els.chariot?.addEventListener('change',()=>{if(els.search){els.search.value='';els.searchResults.innerHTML=''}});els.note?.addEventListener('input',updateNoteCount);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!els.modal.classList.contains('hidden'))closeModal()});els.plan.onclick=()=>openModal(selectedDate, new URLSearchParams(location.search).get('qr')||'');els.today.onclick=()=>{selectedDate=localDateISO(new Date());weekStart=startOfWeek(new Date());renderWeek();renderList()};els.prev.onclick=()=>{weekStart=addDays(weekStart,-7);renderWeek();renderList()};els.next.onclick=()=>{weekStart=addDays(weekStart,7);renderWeek();renderList()};
-  window.addEventListener('focus',refreshFromServer);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFromServer()});setInterval(refreshFromServer,15000);
+  window.addEventListener('focus',refreshFromServer);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFromServer()});
+  // Realtime makes planning changes visible to every connected user without F5.
+  // The 15s refresh remains as a safety fallback for browsers/networks where
+  // Supabase Realtime is unavailable.
+  const realtimeChannel=startSbiRealtime(()=>{if(document.visibilityState!=='hidden')refreshFromServer({remoteEvent:true})},['maintenance','chariots']);
+  setInterval(refreshFromServer,15000);
   renderWeek();renderList();
+  const requestedQr=new URLSearchParams(location.search).get('qr')||'';
+  if(requestedQr){
+    const target=plans.find(p=>String(p.qr)===String(requestedQr));
+    if(target){
+      selectedDate=String(target.date||selectedDate);
+      weekStart=startOfWeek(parseDate(selectedDate));
+      renderWeek();renderList();
+      setTimeout(()=>openEdit(target.id),40);
+    }
+  }
 }
 
 async function renderUpcomingDeliveriesFromPlanning(){
@@ -973,7 +1306,7 @@ async function renderUpcomingDeliveriesFromPlanning(){
     const time=String(p.time||'').trim()||'—';
     const destination=String(p.destination||'').trim()||'Destination non définie';
     const client=String(c?.client||'').trim();
-    return `<a class="timeline-item" href="chariot.html?id=${encodeURIComponent(p.qr)}">\
+    return `<a class="timeline-item" href="planning-livraisons.html?qr=${encodeURIComponent(p.qr)}" title="Ouvrir la modification de cette livraison">\
       <div class="timeline-date"><strong>${esc(time)}</strong><span>${esc(dayLabel(p.date))}</span></div>\
       <div class="timeline-track"><span class="timeline-dot ${index===0?'active':''}"></span>${index<rows.length-1?'<span class="timeline-line"></span>':''}</div>\
       <div class="timeline-main"><div class="timeline-title">${esc(chassis)}</div><div class="timeline-meta">${esc(destination)}${client?' · '+esc(client):''}</div></div>\
