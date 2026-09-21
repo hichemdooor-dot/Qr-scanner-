@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="style.css?v=63.8">
+  <link rel="stylesheet" href="style.css?v=63.9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <title>SBI — Notifications</title>
 </head>
@@ -24,9 +24,12 @@
   <main class="notifications-main">
     <div class="notifications-wrap">
       <div class="notifications-head">
-        <div>
-          <h1>Notifications</h1>
-          <p>Suivi des dernières activités et modifications du parc.</p>
+        <div class="notifications-head-title">
+          <span class="notifications-head-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></span>
+          <div>
+            <h1>Notifications</h1>
+            <p>Suivi des dernières activités et modifications du parc.</p>
+          </div>
         </div>
         <div class="notifications-head-actions">
           <span id="notificationsPageCount" class="notifications-count">0</span>
@@ -37,14 +40,14 @@
       <div class="page-card" id="notificationsCard">
         <div class="notification-group notification-group-new">
           <div class="notification-group-head">
-            <h2>Nouvelles notifications</h2>
+            <h2><span class="notification-group-icon new-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/><path d="M9 17h6"/></svg></span>Nouvelles notifications</h2>
             <span id="newNotificationsCount">0</span>
           </div>
           <div id="newNotificationsList"></div>
         </div>
         <div class="notification-group notification-group-old">
           <div class="notification-group-head">
-            <h2>Anciennes notifications</h2>
+            <h2><span class="notification-group-icon old-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v15H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Anciennes notifications</h2>
             <span id="oldNotificationsCount">0</span>
           </div>
           <div id="oldNotificationsList"></div>
@@ -63,7 +66,7 @@
 
   <script src="js/shell.js?v=36"></script>
   <script src="maintenance-config.js?v=6"></script>
-  <script src="js/app.js?v=63.7"></script>
+  <script src="js/app.js?v=63.8"></script>
   <script>initPage(notificationsPage())</script>
 </body>
 </html>
