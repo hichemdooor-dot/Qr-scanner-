@@ -62,9 +62,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     const side=ov.querySelector('.side');
     if(side && !side.classList.contains('mobile-notifications-sidebar') && !side.classList.contains('dash-sidebar')){
       side.classList.add('dashboard-mobile-drawer');
-      // Mobile drawer contains only the navigation: fast, compact and fully touchable.
-      side.innerHTML=`<div class="mobile-drawer-title"><span>Menu</span>
-        <button type="button" class="mobile-drawer-close dashboard-menu-close" aria-label="Fermer le menu">×</button></div>
+      // Keep the drawer shell separate from the desktop data-nav container so the close button survives rendering.
+      side.removeAttribute('data-nav');
+      side.innerHTML=`<div class="mobile-drawer-title" aria-hidden="false"><span class="mobile-drawer-title-text">Menu</span>
+        <button type="button" class="mobile-drawer-close dashboard-menu-close" aria-label="Fermer le menu" title="Fermer le menu">×</button></div>
         <nav class="dash-nav" data-nav aria-label="Navigation principale"></nav>`;
     }
   });
@@ -77,6 +78,22 @@ document.addEventListener('DOMContentLoaded',()=>{
     ov.querySelectorAll('.nav a').forEach(a=>{
       a.addEventListener('click',handleMobileNavClick);
     });
+  });
+  document.querySelectorAll('.overlay').forEach((ov)=>{
+    const side=ov.querySelector('.dashboard-mobile-drawer');
+    if(!side) return;
+    let touchStartX=0, touchStartY=0;
+    side.addEventListener('touchstart',(e)=>{
+      const t=e.changedTouches?.[0];
+      if(!t) return;
+      touchStartX=t.clientX; touchStartY=t.clientY;
+    },{passive:true});
+    side.addEventListener('touchend',(e)=>{
+      const t=e.changedTouches?.[0];
+      if(!t) return;
+      const dx=t.clientX-touchStartX, dy=t.clientY-touchStartY;
+      if(dx < -70 && Math.abs(dx) > Math.abs(dy)*1.2) closeMobileMenu();
+    },{passive:true});
   });
   document.querySelectorAll('.brand').forEach(el=>{el.innerHTML='<img class="site-logo" src="assets/logo-sbi-hangcha.png" alt="SBI HANGCHA">';});
   document.querySelectorAll('.avatar').forEach(el=>{

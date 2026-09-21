@@ -1546,3 +1546,88 @@ button.menu-btn, button.notification-bell, button.user-admin-top, .text-link, .v
   .overlay.open > .side.dashboard-mobile-drawer .sidebar-promo,
   .overlay.open > .side.dashboard-mobile-drawer .sidebar-foot{display:none!important}
 }
+
+
+/* V66.5 — Responsive mobile drawer, all pages */
+@media (max-width:800px), (hover:none) and (pointer:coarse){
+  html,body{max-width:100%;overflow-x:hidden!important}
+  body.menu-open{overflow:hidden!important;touch-action:none!important}
+  .overlay.open{
+    display:block!important;position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;min-height:100dvh!important;
+    background:rgba(4,18,31,.54)!important;backdrop-filter:blur(1.5px)!important;-webkit-backdrop-filter:blur(1.5px)!important;
+    z-index:100000!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;
+  }
+  .overlay:not(.open){display:none!important}
+  .overlay.open > .side.dashboard-mobile-drawer{
+    display:flex!important;flex-direction:column!important;position:absolute!important;left:0!important;top:0!important;bottom:0!important;
+    width:min(84vw,330px)!important;height:100dvh!important;max-height:100dvh!important;margin:0!important;padding:0 10px 12px!important;
+    box-sizing:border-box!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;
+    overscroll-behavior:contain!important;touch-action:pan-y!important;scrollbar-width:thin!important;
+    background:#081d2d!important;color:#fff!important;border:0!important;border-right:1px solid rgba(255,255,255,.11)!important;
+    box-shadow:10px 0 30px rgba(0,0,0,.34)!important;z-index:100001!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .mobile-drawer-title{
+    position:sticky!important;top:0!important;z-index:10!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;
+    flex:0 0 54px!important;width:100%!important;min-height:54px!important;height:54px!important;padding:8px 2px 6px 8px!important;
+    box-sizing:border-box!important;background:#081d2d!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .mobile-drawer-title-text{
+    position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;
+    clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .mobile-drawer-close{
+    display:grid!important;place-items:center!important;width:40px!important;height:40px!important;min-width:40px!important;
+    margin:0 0 0 auto!important;padding:0!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:10px!important;
+    background:rgba(255,255,255,.08)!important;color:#fff!important;font-size:28px!important;font-weight:400!important;line-height:1!important;
+    cursor:pointer!important;pointer-events:auto!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .mobile-drawer-close:active{transform:scale(.94)!important;background:rgba(255,255,255,.15)!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu,
+  .overlay.open > .side.dashboard-mobile-drawer .nav{
+    display:block!important;width:100%!important;margin:0!important;padding:4px 8px 20px!important;box-sizing:border-box!important;
+    background:#081d2d!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a{
+    display:flex!important;align-items:center!important;width:100%!important;min-height:52px!important;margin:3px 0!important;
+    padding:10px 12px!important;box-sizing:border-box!important;gap:14px!important;border-radius:10px!important;background:transparent!important;
+    color:#eaf3fa!important;font-family:inherit!important;font-size:16px!important;font-weight:700!important;line-height:1.2!important;
+    letter-spacing:0!important;text-decoration:none!important;white-space:nowrap!important;overflow:hidden!important;
+    -webkit-tap-highlight-color:transparent!important;touch-action:manipulation!important;user-select:none!important;
+    transition:background .14s ease,transform .10s ease!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a span,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a span{
+    display:block!important;visibility:visible!important;opacity:1!important;color:inherit!important;flex:1 1 auto!important;min-width:0!important;
+    overflow:hidden!important;text-overflow:ellipsis!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a .nav-svg,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a .nav-svg{
+    display:block!important;width:24px!important;height:24px!important;min-width:24px!important;flex:0 0 24px!important;
+    color:currentColor!important;stroke:currentColor!important;opacity:1!important;visibility:visible!important;
+  }
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a:hover,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a:hover,
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a:focus-visible,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a:focus-visible{background:rgba(255,255,255,.08)!important;outline:none!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a:active,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a:active,
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a.tap-active,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a.tap-active{transform:scale(.985)!important;background:rgba(255,255,255,.13)!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a.active,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a.active{background:#087bf0!important;color:#fff!important;box-shadow:0 7px 18px rgba(8,123,240,.24)!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu .logout-link{color:#ff8d95!important;margin-top:6px!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu .nav-separator,
+  .overlay.open > .side.dashboard-mobile-drawer .nav .nav-separator{display:block!important;width:100%!important;height:1px!important;margin:8px 0!important;background:rgba(255,255,255,.16)!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-logo,
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-promo,
+  .overlay.open > .side.dashboard-mobile-drawer .sidebar-foot{display:none!important}
+  .dashboard-page .pro-menu-btn,.menu-btn.mobile-only{-webkit-tap-highlight-color:transparent!important;touch-action:manipulation!important}
+}
+@media (max-width:380px){
+  .overlay.open > .side.dashboard-mobile-drawer{width:min(88vw,305px)!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a{font-size:15px!important;gap:12px!important;min-height:50px!important}
+  .overlay.open > .side.dashboard-mobile-drawer .dash-menu a .nav-svg,
+  .overlay.open > .side.dashboard-mobile-drawer .nav a .nav-svg{width:23px!important;height:23px!important;min-width:23px!important;flex-basis:23px!important}
+}

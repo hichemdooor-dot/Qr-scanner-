@@ -30,7 +30,7 @@ async function preparationLivraisonPage(){
       const disabled=normalizeStatus(c.status)==='préparation livraison';
       return `<div class="card prep-item" role="link" tabindex="0" aria-label="Ouvrir la fiche du chariot ${esc(c.chassis||c.qr_id||'')}" data-chariot-row="${esc(c.qr_id||'')}">
         <div class="prep-item-main">
-          <div class="prep-item-title">${esc(c.chassis||c.qr_id||\'—\')}</div>
+          <div class="prep-item-title">${esc(c.chassis||c.qr_id||'—')}</div>
           <div class="prep-item-meta">${esc(c.engine||'—')} · ${esc(fmtCapacity(c.capacity)||'—')} · ${esc(c.client||'—')}</div>
           <div class="prep-item-meta">Statut : <strong>${esc(c.status||'—')}</strong></div>
         </div>
