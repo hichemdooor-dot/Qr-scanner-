@@ -11,6 +11,8 @@ function menuHTML(){
     <a href="dashboard.html">${icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>')}<span>Tableau de bord</span></a>
     <a href="chariots.html">${icon('<path d="M3 16l2-7h10l5 4v3"/><path d="M5 16h14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/><path d="M15 9V5h3v5"/>')}<span>Tous les chariots</span></a>
     <a href="stock.html">${icon('<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3M8 11h8M8 15h5"/>')}<span>Chariots en stock</span></a>
+    <a href="affectation.html">${icon('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/>')}<span>Affectation commerciale</span></a>
+    <a href="modification-production.html">${icon('<path d="M4 7h16v10H4z"/><path d="M8 17v3M16 17v3M7 4h10M9 8l2 2 4-4"/>')}<span>Modification production</span></a>
     <a href="nouveau-chariot.html">${icon('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>')}<span>Nouveau chariot</span></a>
     <a href="preparation-livraison.html">${icon('<path d="M3 5h11v11H3z"/><path d="M14 9h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>')}<span>Préparation livraison</span></a>
     <a href="chariots-prevus-livraison.html">${icon('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18"/><path d="M8 13h3M8 17h5"/>')}<span>Chariots prévus livraison</span></a>
