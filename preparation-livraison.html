@@ -54,7 +54,7 @@ async function preparationLivraisonPage(){
         </div>
       </div>`
     }).join('')||'<div class="empty">Aucun chariot correspondant.</div>';
-    els.list.querySelectorAll('[data-prep-ready]').forEach(b=>b.onclick=e=>{e.stopPropagation();markPreparationReady(b.dataset.prepReady)});els.list.querySelectorAll('[data-chariot-row]').forEach(row=>{const go=()=>{const id=row.dataset.chariotRow;if(id)location.href='chariot.html?id='+encodeURIComponent(id)+'&from=preparation'};row.addEventListener('click',e=>{if(e.target.closest('a,button,input,select,textarea'))return;go()});row.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('a,button,input,select,textarea')){e.preventDefault();go()}})});
+    els.list.querySelectorAll('[data-prep-ready]').forEach(b=>b.onclick=e=>{e.stopPropagation();passToPreparation(b.dataset.prepReady)});els.list.querySelectorAll('[data-chariot-row]').forEach(row=>{const go=()=>{const id=row.dataset.chariotRow;if(id)location.href='chariot.html?id='+encodeURIComponent(id)+'&from=preparation'};row.addEventListener('click',e=>{if(e.target.closest('a,button,input,select,textarea'))return;go()});row.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('a,button,input,select,textarea')){e.preventDefault();go()}})});
   }
   async function passToPreparation(qrId){
     if(!requireAdmin())return;

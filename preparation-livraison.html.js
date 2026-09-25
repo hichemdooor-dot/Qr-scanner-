@@ -40,20 +40,20 @@ async function preparationLivraisonPage(){
         </div>
       </div>`
     }).join('')||'<div class="empty">Aucun chariot correspondant.</div>';
-    els.list.querySelectorAll('[data-prep-ready]').forEach(b=>b.onclick=e=>{e.stopPropagation();markPreparationReady(b.dataset.prepReady)});els.list.querySelectorAll('[data-chariot-row]').forEach(row=>{const go=()=>{const id=row.dataset.chariotRow;if(id)location.href='chariot.html?id='+encodeURIComponent(id)};row.addEventListener('click',e=>{if(e.target.closest('a,button,input,select,textarea'))return;go()});row.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('a,button,input,select,textarea')){e.preventDefault();go()}})});
+    els.list.querySelectorAll('[data-prep-ready]').forEach(b=>b.onclick=e=>{e.stopPropagation();passToPreparation(b.dataset.prepReady)});els.list.querySelectorAll('[data-chariot-row]').forEach(row=>{const go=()=>{const id=row.dataset.chariotRow;if(id)location.href='chariot.html?id='+encodeURIComponent(id)};row.addEventListener('click',e=>{if(e.target.closest('a,button,input,select,textarea'))return;go()});row.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('a,button,input,select,textarea')){e.preventDefault();go()}})});
   }
-  async function markPreparationReady(qrId){
+  async function passToPreparation(qrId){
     if(!requireAdmin())return;
     if(!currentUser){alert('Connexion requise.');return}
     const c=CHARIOTS.find(x=>String(x.qr_id)===String(qrId));if(!c)return;
     if(normalizeStatus(c.status)==='préparation livraison')return;
-    const ok=await performWorkflowAction(qrId,'prepare');
+    const ok=await performWorkflowAction(qrId,'ready');
     if(!ok)return;
     await loadChariots();
     baseRows=CHARIOTS.filter(c=>normalizeStatus(c.status)==='preparation livraison');
     buildFilters();
     render();
-    toastCardUpdate(qrId,'Préparation livraison');
+    toastCardUpdate(qrId,'Prêt à livrer');
   }
   // Seuls les chariots avec les statuts autorisés pour la préparation sont affichés.
   baseRows=CHARIOTS.filter(c=>normalizeStatus(c.status)==='preparation livraison');
