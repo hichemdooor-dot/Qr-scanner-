@@ -1,4 +1,4 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="css/style.css?v=68.0"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><title>SBI — Chariots prévus pour livraison</title><style>
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#081f33"><link rel="stylesheet" href="style.css?v=69.0"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><title>SBI — Chariots prévus pour livraison</title><style>
 .pl-filter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pl-search{grid-column:1/-1}.pl-reset{min-height:44px}.pl-list{display:grid;gap:10px;margin-top:14px}.pl-item{display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;transition:box-shadow .15s ease,transform .15s ease}.pl-item:focus-visible{outline:3px solid rgba(20,120,230,.28);outline-offset:2px}.pl-item:hover{box-shadow:0 7px 18px rgba(15,35,55,.08);transform:translateY(-1px)}.pl-item-main{min-width:0}.pl-item-title{font-size:18px;font-weight:800;color:var(--text,#0b315d)} .pl-item-title .pl-chariot-link{display:block;width:100%;padding:3px 0}.pl-item-meta{margin-top:4px;color:var(--muted,#62748a);font-size:14px}.pl-item-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pl-item-actions .btn{white-space:nowrap}.pl-plan-disabled{background:#e5e7eb!important;border-color:#d1d5db!important;color:#6b7280!important;box-shadow:none!important;cursor:not-allowed!important;opacity:1!important}@media(max-width:900px){.pl-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pl-item{flex-direction:column;align-items:stretch}.pl-item-actions{justify-content:stretch}.pl-item-actions .btn{flex:1}}@media(max-width:560px){.pl-filter-grid{grid-template-columns:1fr}.pl-search{grid-column:auto}.pl-item-title{font-size:17px}}
 
 /* V67.41 — Fiche chariot en popup fiable */
@@ -21,7 +21,7 @@ html.fiche-popup-lock,html.fiche-popup-lock body{overflow:hidden!important}
     <iframe id="fichePopupFrame" class="fiche-popup-frame" title="Fiche chariot" loading="eager"></iframe>
   </div>
 </div>
-<footer>QR ID permanent • Données techniques et modifications stockées dans Supabase<br>© 2026 · Developed by <strong>BaCkDoooR</strong></footer><script src="js/shell.js?v=68.0"></script><script src="maintenance-config.js?v=7"></script><script src="js/app.js?v=67.63"></script><script>
+<footer>QR ID permanent • Données techniques et modifications stockées dans Supabase<br>© 2026 · Developed by <strong>BaCkDoooR</strong></footer><script src="js/shell.js?v=69.0"></script><script src="maintenance-config.js?v=7"></script><script src="js/app.js?v=69.0"></script><script>
 async function plannedDeliveryPage(){
   if(!await session())return; await loadChariots();
   try{await loadDeliveryPlans({migrateLocal:true})}catch(e){DELIVERY_PLANS=readCachedDeliveryPlans(); console.warn('Chargement des planifications depuis le serveur impossible',e)}
@@ -78,4 +78,4 @@ async function plannedDeliveryPage(){
   window.addEventListener('pageshow',async()=>{await refreshLive()});
 }
 initPage(plannedDeliveryPage())
-</script><script src="js/button-icons.js?v=67.41"></script><script src="js/search-suggestions.js?v=67.41"></script><script src="js/mobile-fiche-popup.js?v=67.43"></script></body></html>
+</script><script src="js/button-icons.js?v=67.41"></script><script src="js/search-suggestions.js?v=67.41"></script><script src="js/mobile-fiche-popup.js?v=69.0"></script></body></html>
