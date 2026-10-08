@@ -95,74 +95,8 @@ function toggleSidebar(force){
   if(window.innerWidth<=800){toggleMenu(force);return}
   const collapsed=typeof force==='boolean'?force:!document.body.classList.contains('sidebar-collapsed');
   document.body.classList.toggle('sidebar-collapsed',collapsed);
-  try{localStorage.setItem('sbiSidebarCollapsed',collapsed?'1':'0')}catch(e){}
   const btn=document.querySelector('.pro-menu-btn');
   if(btn)btn.setAttribute('aria-expanded',collapsed?'false':'true');
-}
-
-function initSbiProRefresh(){
-  document.body.classList.add('sbi-pro-refresh');
-  const page=(location.pathname.split('/').pop()||'dashboard.html').replace(/\.html$/,'')||'dashboard';
-  document.body.dataset.sbiPage=page;
-
-  // Persist the desktop sidebar preference so the operator gets the same workspace
-  // layout on every return to the application.
-  if(window.innerWidth>800 && document.body.classList.contains('dashboard-page')){
-    try{
-      if(localStorage.getItem('sbiSidebarCollapsed')==='1') document.body.classList.add('sidebar-collapsed');
-    }catch(e){}
-    const btn=document.querySelector('.pro-menu-btn');
-    if(btn) btn.setAttribute('aria-expanded',document.body.classList.contains('sidebar-collapsed')?'false':'true');
-  }
-
-  // Add a compact breadcrumb without touching existing page-specific markup.
-  const head=document.querySelector('.page-head');
-  if(head && !head.querySelector('.pro-breadcrumbs')){
-    const title=head.querySelector('.page-title')?.textContent?.trim();
-    const active=document.querySelector('.nav a.active');
-    const group=active?.closest('.nav-group')?.querySelector('.nav-group-label')?.textContent?.trim();
-    if(title){
-      const crumb=document.createElement('nav');
-      crumb.className='pro-breadcrumbs';
-      crumb.setAttribute('aria-label','Fil d’Ariane');
-      crumb.innerHTML='<a href="dashboard.html">Accueil</a>'+(group?'<span class="sep">›</span><span>'+escapeHtmlShell(group)+'</span>':'')+'<span class="sep">›</span><strong>'+escapeHtmlShell(title)+'</strong>';
-      const sub=head.querySelector('.sub');
-      (sub?.parentElement||head.firstElementChild||head).appendChild(crumb);
-    }
-  }
-
-  // Make the active navigation item explicit for assistive technologies.
-  document.querySelectorAll('.nav a').forEach(a=>{
-    if(a.classList.contains('active')) a.setAttribute('aria-current','page');
-    else a.removeAttribute('aria-current');
-    const label=a.querySelector('span')?.textContent?.trim();
-    if(label && !a.getAttribute('title')) a.setAttribute('title',label);
-  });
-
-  // Long operational pages get a consistent one-tap return-to-top control.
-  if(!document.getElementById('sbiScrollTop') && !document.body.classList.contains('login-page') && !document.body.classList.contains('maintenance-page')){
-    const top=document.createElement('button');
-    top.id='sbiScrollTop'; top.className='sbi-scroll-top'; top.type='button';
-    top.setAttribute('aria-label','Retour en haut'); top.title='Retour en haut';
-    top.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"/><path d="M12 8v10"/></svg>';
-    top.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
-    document.body.appendChild(top);
-    const sync=()=>top.classList.toggle('show',(window.scrollY||document.documentElement.scrollTop)>420);
-    window.addEventListener('scroll',sync,{passive:true}); sync();
-  }
-
-  // Keyboard navigation for the most common operator action: global search.
-  const findSearch=()=>document.querySelector('#dashboardSearch,#siteGlobalSearchInput,#globalQuery,#search,#stockSearch,#deliveredSearch,#affSearch,.sbi-global-searchbar input');
-  document.addEventListener('keydown',e=>{
-    const target=e.target;
-    const typing=target && (target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.tagName==='SELECT'||target.isContentEditable);
-    if((e.key==='/' || ((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k')) && !typing){
-      e.preventDefault(); const input=findSearch(); if(input){input.focus();input.select?.()}
-    }
-  },{capture:true});
-}
-function escapeHtmlShell(value){
-  return String(value||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 function goToGlobalSearch(query='',from='',to='',focusDate=false){
   const url=new URL('recherche.html',location.href);
@@ -273,7 +207,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     el.replaceWith(wrap);
   });
   nav();
-  initSbiProRefresh();
   document.querySelectorAll('.overlay').forEach(ov=>{
     ov.addEventListener('click',e=>{if(e.target===ov)closeMobileMenu()});
     ov.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',()=>closeMobileMenu()));

@@ -1,0 +1,4 @@
+<!doctype html><html><body><button id=b>Excel</button><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script>
+window.onerror=(m,s,l,c,e)=>{document.body.dataset.err=(m+' @ '+l);console.log('ERR',m,e)};
+window.test=()=>{const rows=[{'QR ID':'1','N° châssis':'A','Client':'x'},{'QR ID':'2','N° châssis':'B','Client':'y'}]; const wb=XLSX.utils.book_new(); const ws=XLSX.utils.json_to_sheet(rows); ws['!freeze']={xSplit:0,ySplit:1}; ws['!autofilter']={ref:XLSX.utils.encode_range(ws['!ref'])}; XLSX.utils.book_append_sheet(wb,ws,'Chariots'); XLSX.writeFile(wb,'test.xlsx'); return 'ok'};
+</script></body></html>
